@@ -1,0 +1,177 @@
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index bc25de7..bf37575 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -32,6 +32,7 @@
+ #endif
+ 
+ #include "icons.h"
++#include "WolfModule.h"
+ 
+ class SplashScreen : public UIScreen {
+   UITask* _task;
+@@ -88,6 +89,7 @@ public:
+ 
+ class HomeScreen : public UIScreen {
+   enum HomePage {
++    WOLF,     // the wolf pet: main screen, never times out
+     FIRST,
+     RECENT,
+     RADIO,
+@@ -204,6 +206,8 @@ class HomeScreen : public UIScreen {
+   }
+ 
+ public:
++  bool onWolfPage() const { return _page == HomePage::WOLF; }
++
+   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, NodePrefs* node_prefs)
+      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
+        _shutdown_init(false), sensors_lpp(200) {  }
+@@ -249,6 +253,7 @@ public:
+   }
+ 
+   int render(DisplayDriver& display) override {
++    if (_page == HomePage::WOLF) return _task->renderWolf(display);   // full-screen wolf, no title bar
+     display.setColor(UIColor::title_bkg);
+     display.fillRect(0, 0, display.width(), 12);
+     char tmp[80];
+@@ -575,6 +580,10 @@ public:
+ #endif
+       return true;
+     }
++    if (c == KEY_ENTER && _page == HomePage::WOLF) {   // long press: look at the next wolf
++      _task->wolfNextWolf();
++      return true;
++    }
+     if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
+       if (_task->isBluetoothEnabled()) {  // toggle Bluetooth on/off
+         _task->disableBluetooth();
+@@ -756,6 +765,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
+   splash = new SplashScreen(this);
+   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
+   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
++  wolf = new WolfModule();
++  wolf->begin(this);
+   setCurrScreen(splash);
+ }
+ 
+@@ -796,6 +807,7 @@ switch(t){
+ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t txt_type, uint32_t sender_timestamp, const char* text) {
+   // we only want to show text messages on display, not cli data
+   if (!(txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN)) return;
++  if (wolf) wolf->onMessage();
+ 
+   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+   ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from.name, text);
+@@ -817,6 +829,7 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
+ }
+ 
+ void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_details, const char* text) {
++  if (wolf) wolf->onMessage();
+   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+   ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, channel_details.name, text);
+   setCurrScreen(msg_preview);
+@@ -850,6 +863,7 @@ void UITask::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
+ }
+ 
+ void UITask::onControlDataRecv(const mesh::Packet* packet) {
++  if (wolf) wolf->onControl(packet->payload, packet->payload_len);
+ #if UI_DISCOVER_SCREEN
+   if (packet->payload_len >= 14 && (packet->payload[0] & 0xF0) == CTL_TYPE_NODE_DISCOVER_RESP) {
+     ((HomeScreen *) home)->handleDiscoverResponse(packet);
+@@ -887,6 +901,7 @@ void UITask::setCurrScreen(UIScreen* c) {
+   hardware-agnostic pre-shutdown activity should be done here
+ */
+ void UITask::shutdown(bool restart){
++  if (wolf) wolf->save();
+ 
+   #ifdef PIN_BUZZER
+   /* note: we have a choice here -
+@@ -922,6 +937,7 @@ bool UITask::isButtonPressed() const {
+ 
+ void UITask::loop() {
+   char c = 0;
++  if (wolf) wolf->loop();
+ #if UI_HAS_JOYSTICK
+   int ev = user_btn.check();
+   if (ev == BUTTON_EVENT_CLICK) {
+@@ -1049,7 +1065,7 @@ void UITask::loop() {
+       _auto_off = millis() + AUTO_OFF_MILLIS;
+     }
+ #endif
+-    if (millis() > _auto_off) {
++    if (millis() > _auto_off && !wolfPageActive()) {   // the wolf screen never times out
+       _display->turnOff();
+     }
+ #endif
+@@ -1103,10 +1119,30 @@ char UITask::handleLongPress(char c) {
+ 
+ char UITask::handleDoubleClick(char c) {
+   MESH_DEBUG_PRINTLN("UITask: double-click triggered");
++  if (_display != NULL && _display->isOn() && wolfPageActive()) {
++    _display->turnOff();     // on the wolf screen, a double click turns the screen off
++    return 0;
++  }
+   checkDisplayOn(c);
+   return c;
+ }
+ 
++bool UITask::wolfPageActive() const {
++  return curr != NULL && curr == home && ((HomeScreen *) home)->onWolfPage();
++}
++
++int UITask::renderWolf(DisplayDriver& display) {
++  return wolf ? wolf->render(display, getBattMilliVolts()) : 1000;
++}
++
++void UITask::wolfNextWolf() {
++  if (!wolf) return;
++  char desc[32];
++  wolf->nextWolf(desc, sizeof(desc));
++  showAlert(desc, 1800);
++  _next_refresh = 0;
++}
++
+ char UITask::handleTripleClick(char c) {
+   MESH_DEBUG_PRINTLN("UITask: triple click triggered");
+   checkDisplayOn(c);
+diff --git a/examples/companion_radio/ui-new/UITask.h b/examples/companion_radio/ui-new/UITask.h
+index 361b04d..250eff1 100644
+--- a/examples/companion_radio/ui-new/UITask.h
++++ b/examples/companion_radio/ui-new/UITask.h
+@@ -21,6 +21,7 @@
+ 
+ #include "../AbstractUITask.h"
+ #include "../NodePrefs.h"
++#include "WolfModule.h"
+ 
+ #ifdef UI_NO_DISCOVER_SCREEN
+   #error "UI_NO_DISCOVER_SCREEN is obsolete - use -D UI_DISCOVER_SCREEN=0 instead"
+@@ -76,6 +77,7 @@ class UITask : public AbstractUITask {
+   UIScreen* home;
+   UIScreen* msg_preview;
+   UIScreen* curr;
++  WolfModule* wolf;
+ 
+   void userLedHandler();
+ 
+@@ -93,6 +95,7 @@ public:
+     next_batt_chck = _next_refresh = 0;
+     ui_started_at = 0;
+     curr = NULL;
++    wolf = NULL;
+   }
+   void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
+ 
+@@ -102,6 +105,11 @@ public:
+   bool hasDisplay() const { return _display != NULL; }
+   bool isButtonPressed() const;
+ 
++  // wolf pet
++  bool wolfPageActive() const;           // true while the wolf screen is showing
++  int  renderWolf(DisplayDriver& display);
++  void wolfNextWolf();
++
+   bool isBuzzerQuiet() { 
+ #ifdef PIN_BUZZER
+     return buzzer.isQuiet();

@@ -1,0 +1,65 @@
+name: Build wolf firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "PlatformIO environment (Heltec V4 OLED)"
+        type: choice
+        default: heltec_v4_companion_radio_ble
+        options:
+          - heltec_v4_companion_radio_ble
+          - heltec_v4_companion_radio_usb
+          - heltec_v4_companion_radio_wifi
+      meshcore_ref:
+        description: "MeshCore commit to build on (the patch was made against the default)"
+        type: string
+        default: 81dbae592ffad40b4212bc0b37e82b38da08f4bc
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PIO_ENV: ${{ inputs.env }}
+      MC_REF: ${{ inputs.meshcore_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Get MeshCore
+        run: |
+          git init mc
+          cd mc
+          git remote add origin https://github.com/meshcore-dev/MeshCore.git
+          git fetch --depth 1 origin "$MC_REF"
+          git checkout FETCH_HEAD
+
+      - name: Game-rule tests (PC build)
+        run: |
+          g++ -std=c++17 -I src -I mc/src test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp -o host_sim
+          ./host_sim logic | grep -v "\[alert\]"
+
+      - name: Add the wolf to MeshCore
+        run: python3 tools/apply_wolf.py --meshcore mc
+
+      - name: Build firmware
+        run: |
+          pip install platformio
+          cd mc
+          pio run -e "$PIO_ENV" -t mergebin
+
+      - name: Collect output
+        run: |
+          mkdir -p out
+          cp mc/.pio/build/"$PIO_ENV"/firmware.bin out/ || true
+          cp mc/.pio/build/"$PIO_ENV"/firmware-merged.bin out/ || true
+          find mc/.pio/build/"$PIO_ENV" -maxdepth 1 -name '*.bin' -print
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wolf-${{ inputs.env }}
+          path: out/
