@@ -155,6 +155,15 @@ int wolfDrawSprite(DisplayDriver& d, uint32_t genome, uint8_t stage, int x, int 
   if (K.eye2x >= 0)
     xorRect(K.eye2x, K.eye2y + (t.eye == 1 ? 1 : 0), ew[t.eye], eh[t.eye], cw, ch, pose.mirror);
   xorRect(K.nosex - 1, K.nosey - 1, 2, 2, cw, ch, pose.mirror);
+  if (!front) {
+    // side view: slanted brow over the eye and a mouth line running back from the muzzle tip
+    xorRect(K.eye1x - 1, K.eye1y - 1, 1, 1, cw, ch, pose.mirror);
+    xorRect(K.nosex - 7, K.nosey + 1, 5, 1, cw, ch, pose.mirror);
+  } else {
+    // front view: brows slanting in towards the nose
+    xorRect(K.eye1x - 1, K.eye1y - 2, 1, 1, cw, ch, pose.mirror);
+    if (K.eye2x >= 0) xorRect(K.eye2x + 2, K.eye2y - 2, 1, 1, cw, ch, pose.mirror);
+  }
   if (hp == 3 && K.mw > 0) xorRect(K.mx, K.my, K.mw, K.mh, cw, ch, pose.mirror);
 
   // pack and draw
