@@ -1,0 +1,102 @@
+name: Build ORION + wolf firmware
+
+# LODESTAR ORION (public repo) with the wolf pet as the first screen after the splash.
+# Lives in this private repo so the wolf code stays private.
+on:
+  workflow_dispatch:
+    inputs:
+      units:
+        description: "Speed units: metric (km/h) or mph"
+        type: choice
+        default: metric
+        options: [metric, mph]
+      meshcore_ref:
+        description: "MeshCore commit to build on"
+        type: string
+        default: 81dbae592ffad40b4212bc0b37e82b38da08f4bc
+      release_tag:
+        description: "Publish a release in this private repo with this tag (empty = just build)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PIO_ENV: heltec_v4_companion_radio_ble
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: propertymonitor-web/lodestar_nova_alpha
+          path: orion
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Get MeshCore
+        env:
+          MC_REF: ${{ inputs.meshcore_ref }}
+        run: |
+          git init mc
+          cd mc
+          git remote add origin https://github.com/meshcore-dev/MeshCore.git
+          git fetch --depth 1 origin "$MC_REF"
+          git checkout FETCH_HEAD
+
+      - name: Wolf game-rule tests (PC build)
+        run: |
+          g++ -std=c++17 -I src -I mc/src test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp -o host_sim
+          ./host_sim logic | grep -v "\[alert\]"
+
+      - name: Apply ORION, then the wolf
+        run: |
+          python3 orion/tools/apply_nova.py --meshcore mc
+          python3 tools/apply_orion_wolf.py --meshcore mc
+
+      - name: Build firmware
+        env:
+          PLATFORMIO_BUILD_FLAGS: -DNOVA_ORION=1 ${{ inputs.units == 'mph' && '-DNOVA_MPH=1' || '' }}
+        run: |
+          set -o pipefail
+          pip install platformio
+          cd mc
+          pio run -e "$PIO_ENV" -t mergebin 2>&1 | tee ../build.log
+
+      - name: Show compile errors
+        if: failure()
+        run: |
+          grep -E "error|undefined reference|No such file" build.log | head -25 | while IFS= read -r l; do
+            echo "::error::${l:0:900}"
+          done
+
+      - name: Collect output
+        run: |
+          mkdir -p out
+          cp mc/.pio/build/"$PIO_ENV"/firmware-merged.bin out/
+          cp mc/.pio/build/"$PIO_ENV"/firmware.bin out/
+          git -C mc rev-parse HEAD > out/meshcore_commit.txt
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-wolf-${{ inputs.units }}
+          path: out/
+
+      - name: Publish release (private repo)
+        if: ${{ inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          UNITS: ${{ inputs.units }}
+        run: |
+          cp out/firmware-merged.bin "orion-wolf-heltec_v4-$UNITS-merged.bin"
+          cp out/firmware.bin "orion-wolf-heltec_v4-$UNITS-update.bin"
+          gh release create "$TAG" "orion-wolf-heltec_v4-$UNITS-merged.bin" "orion-wolf-heltec_v4-$UNITS-update.bin" \
+            --title "ORION + wolf ($UNITS)" \
+            --notes "LODESTAR ORION with the wolf pet after the splash. Heltec V4. Flash the -merged.bin file for a fresh install; the -update.bin file is for updating an existing install."
