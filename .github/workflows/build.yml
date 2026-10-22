@@ -39,8 +39,10 @@ jobs:
 
       - name: Game-rule tests (PC build)
         run: |
+          set -o pipefail
           g++ -std=c++17 -I src -I mc/src test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp -o host_sim
           ./host_sim logic | grep -v "\[alert\]"
+          ./host_sim mix | grep -E "STUCK|stage"
 
       - name: Add the wolf to MeshCore
         run: python3 tools/apply_wolf.py --meshcore mc

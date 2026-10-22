@@ -158,6 +158,40 @@ static int cmd_anim(const char* path) {
   return 0;
 }
 
+// Natural behaviour: nothing forced; count how long it spends in each mode and how often it turns round.
+static int cmd_mix() {
+  int stuck_total = 0;
+  for (int stage = 0; stage < 3; stage++) {
+    MockHost h(4242 + stage, 0x7CA95E21, 0x11223344);
+    WolfGame g(&h);
+    g.begin(0);
+    uint32_t months[3] = {3, 14, 30};
+    g.pack[0].age_secs = months[stage] * WOLF_SECS_PER_MONTH;
+    memset(g.away, 0, sizeof(g.away));
+    WolfScene sc(&g);
+    MockDisplay d;
+    uint32_t t = 100000; int ms[40] = {0}, turns[40] = {0}; int prev = -1; int8_t pdir = 0; int sw = 0, last = -1, run = 0;
+    for (int i = 0; i < 9000; i++, t += 110) {          // 16 minutes
+      if (i % 400 == 200) g.treat_pending = 1;           // and a treat now and then, landing anywhere
+      d.startFrame(0); sc.render(d, t, 3900);
+      int m = sc.debugMode(); ms[m]++;
+      if (m == last) run++; else run = 0;
+      if (run > 300 && m != 8 && m != 6) { if (run == 301) { printf("  STUCK in mode %d for 33 s\\n", m); stuck_total++; } }
+      if (pdir && sc.debugDir() != pdir) turns[m]++;
+      pdir = sc.debugDir();
+      if (m != last) { sw++; last = m; }
+      prev = m;
+    }
+    (void)prev;
+    printf("stage %d: %d mode changes in 16 min\n  frames per mode:", stage, sw);
+    for (int m = 0; m < 23; m++) printf(" %d:%d", m, ms[m]);
+    printf("\n  turns per mode:");
+    for (int m = 0; m < 23; m++) printf(" %d:%d", m, turns[m]);
+    printf("\n");
+  }
+  return stuck_total;
+}
+
 // Every random activity, forced one at a time, for each growth stage.
 static int cmd_events(const char* path, int only_kind, int only_stage) {
   FILE* f = fopen(path, "w");
@@ -409,6 +443,7 @@ static int cmd_logic() {
 
 int main(int argc, char** argv) {
   if (argc >= 3 && !strcmp(argv[1], "sheet")) return cmd_sheet(argv[2]);
+  if (argc >= 2 && !strcmp(argv[1], "mix")) return cmd_mix();
   if (argc >= 3 && !strcmp(argv[1], "anim")) return cmd_anim(argv[2]);
   if (argc >= 3 && !strcmp(argv[1], "events")) return cmd_events(argv[2], argc >= 4 ? atoi(argv[3]) : -1, argc >= 5 ? atoi(argv[4]) : -1);
   if (argc >= 2 && !strcmp(argv[1], "logic")) return cmd_logic();

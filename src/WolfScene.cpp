@@ -313,10 +313,18 @@ void WolfScene::update(uint32_t now, uint32_t dt, uint8_t stage, int rw, int vw)
       break;
     case M_SEEK: {
       if (!_treat.active) { startMode(M_IDLE, now, 500); break; }
+      int wxx = a.x16 / 16;
       int tx = _treat.x16 / 16 + 4;
-      int mouth = a.dir > 0 ? a.x16 / 16 + rw - 3 : a.x16 / 16 + 2;
+      if (tx > wxx && tx < wxx + rw) {      // the bone landed under the wolf: toss it just in front of the nose
+        int m = a.dir > 0 ? wxx + rw - 3 : wxx + 2;
+        tx = m + a.dir * 10;
+        if (tx < 6) tx = 6;
+        if (tx > SCREEN_W - 6) tx = SCREEN_W - 6;
+        _treat.x16 = (int32_t)(tx - 4) * 16;
+      }
+      a.dir = tx > wxx + rw / 2 ? 1 : -1;   // decide by the wolf's middle, not its nose (the nose jumps sides when it turns)
+      int mouth = a.dir > 0 ? wxx + rw - 3 : wxx + 2;
       if (abs(mouth - tx) <= 3) { _eat_start = now; startMode(M_EAT, now, 3200); break; }
-      a.dir = tx > mouth ? 1 : -1;
       walkStep(a, dt, speed + 4, rw);
       break;
     }
@@ -555,10 +563,11 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
       _hole.active = true; _hole.x = mouth - a.dir * 6; _hole.until = now + 30000;
       _hole.depth = (uint8_t)(e / 800 > 4 ? 4 : e / 800);
       if (e >= 4300) {
-        if (rnd(0, 99) < 45) {
+        if (rnd(0, 99) < 45) {              // dug up a bone: chew it right there
           _treat.active = true; _treat.landed = true;
           _treat.x16 = (int32_t)(_hole.x - 4) * 16; _treat.y16 = (GROUND_Y - 3) * 16;
-          startMode(M_IDLE, now, 0);
+          _eat_start = now;
+          startMode(M_EAT, now, 3200);
         } else startMode(M_HAPPY, now, 1200);
       }
       fixed = false;

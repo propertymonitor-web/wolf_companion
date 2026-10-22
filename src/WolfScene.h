@@ -22,6 +22,8 @@ public:
   explicit WolfScene(WolfGame* game);
 
   enum { EV_COUNT = 13 };
+  uint8_t debugMode() const { return _w.mode; }
+  int8_t  debugDir() const { return _w.dir; }
   void forceEvent(uint8_t kind) { _force = kind + 1; }     // for tests: start this activity at the next frame
 
   // Draw one frame (UITask has already cleared the screen).  Returns ms until the next frame.
