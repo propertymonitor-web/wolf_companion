@@ -87,7 +87,7 @@ static int cmd_sheet(const char* path) {
   for (int stage = 2; stage >= 0; stage--) {
     for (uint32_t gm : genomes) {
       d.clear();
-      WolfPose p{0, 0, 0, false};
+      WolfPose p{0, 0, 0, false, 0, false};
       wolfDrawSprite(d, gm, stage, 30, 58, p);
       char lab[40]; snprintf(lab, sizeof(lab), "stage%d_%08X", stage, (unsigned)gm);
       d.dump(f, lab);
@@ -98,7 +98,7 @@ static int cmd_sheet(const char* path) {
     const char* names[] = {"stand", "walk1", "walk2", "walk3", "walk4", "eat", "front", "bark", "tail2", "left"};
     for (int i = 0; i < 10; i++) {
       d.clear();
-      WolfPose p{0, 0, 0, false};
+      WolfPose p{0, 0, 0, false, 0, false};
       if (i >= 1 && i <= 4) p.legs = i;
       if (i == 5) p.head = 1;
       if (i == 6) p.head = 2;
@@ -156,6 +156,40 @@ static int cmd_anim(const char* path) {
   }
   fclose(f);
   return 0;
+}
+
+// Every random activity, forced one at a time, for each growth stage.
+static int cmd_events(const char* path, int only_kind, int only_stage) {
+  FILE* f = fopen(path, "w");
+  MockHost h(777, 0x7CA95E21, 0x11223344);
+  WolfGame g(&h);
+  g.begin(0);
+  uint32_t months[3] = {3, 14, 30};
+  int bad = 0;
+  for (int stage = 0; stage < 3; stage++) {
+    if (only_stage >= 0 && stage != only_stage) continue;
+    for (int k = 0; k < WolfScene::EV_COUNT; k++) {
+      if (only_kind >= 0 && k != only_kind) continue;
+      g.pack[0].age_secs = months[stage] * WOLF_SECS_PER_MONTH;
+      memset(g.away, 0, sizeof(g.away));
+      g.visitor.active = false; g.hearts_until_ms = 0; g.treat_pending = 0; g.bark_pending = false;
+      WolfScene sc(&g);
+      MockDisplay d;
+      uint32_t t = 100000;
+      for (int i = 0; i < 160; i++, t += 110) {            // settle into the normal idle state first
+        d.startFrame(0); sc.render(d, t, 3900);
+      }
+      sc.forceEvent((uint8_t)k);
+      for (int i = 0; i < 260; i++, t += 110) {
+        d.startFrame(0);
+        sc.render(d, t, 3900);
+        // nothing may be drawn outside the screen buffer (the mock clips), but the sprite must stay near the screen
+        if (i % 2 == 0) { char lab[48]; snprintf(lab, sizeof(lab), "ev%02d_st%d_%03d", k, stage, i); d.dump(f, lab); }
+      }
+    }
+  }
+  fclose(f);
+  return bad;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -376,7 +410,8 @@ static int cmd_logic() {
 int main(int argc, char** argv) {
   if (argc >= 3 && !strcmp(argv[1], "sheet")) return cmd_sheet(argv[2]);
   if (argc >= 3 && !strcmp(argv[1], "anim")) return cmd_anim(argv[2]);
+  if (argc >= 3 && !strcmp(argv[1], "events")) return cmd_events(argv[2], argc >= 4 ? atoi(argv[3]) : -1, argc >= 5 ? atoi(argv[4]) : -1);
   if (argc >= 2 && !strcmp(argv[1], "logic")) return cmd_logic();
-  printf("usage: host_sim sheet|anim <file> | logic\n");
+  printf("usage: host_sim sheet|anim|events <file> [kind [stage]] | logic\n");
   return 2;
 }

@@ -14,9 +14,10 @@ from PIL import Image, ImageDraw
 
 SS = 6  # supersampling factor
 
-DESIGN_W, DESIGN_H = 64, 44
-GROUND = 43.0
-HIP = 27.0                 # hip height used for the legs
+PAD = 8                    # blank rows above the design so the head can tip up (howl)
+DESIGN_W, DESIGN_H = 64, 44 + PAD
+GROUND = 43.0 + PAD
+HIP = 27.0 + PAD                 # hip height used for the legs
 NECK = (38.0, 18.0)        # pivot used for head scaling / rotation
 
 # stage: (scale, head_scale, leg_scale)
@@ -93,7 +94,7 @@ class Stage:
             x = NECK[0] + (x - NECK[0]) * self.hk
             y = NECK[1] + (y - NECK[1]) * self.hk
         if not leg:
-            y += self.dy
+            y += self.dy + PAD
         x *= self.k
         y = (y - GROUND) * self.k + (self.ch - 1)
         return (x, y)
@@ -182,8 +183,8 @@ def main(out_path):
                "  int8_t nosex, nosey;\n"
                "  int8_t mx, my, mw, mh;               // open-mouth rectangle\n};\n")
     out.append("struct WolfStageArt {\n  uint8_t cw, ch;\n  WolfPart body;\n  WolfPart legs[5];\n"
-               "  WolfPart head[4];   // 0 side, 1 side-down (eating), 2 front, 3 front (barking)\n"
-               "  WolfKey  key[4];\n  WolfPart ear[3][4];\n  WolfPart tail[3][2];\n};\n\n")
+               "  WolfPart head[5];   // 0 side, 1 side-down (eating), 2 front, 3 front (barking), 4 side-up (howling)\n"
+               "  WolfKey  key[5];\n  WolfPart ear[3][5];\n  WolfPart tail[3][2];\n};\n\n")
 
     stage_syms = []
     for (name, k, hk, lk) in STAGES:
@@ -208,6 +209,8 @@ def main(out_path):
         add("head1", st.render([down_poly], head=True))
         add("head2", st.render([HEAD_FRONT], head=True))
         add("head3", st.render([HEAD_FRONT], head=True))
+        ang_up = math.radians(-32)
+        add("head4", st.render([[rot(p, NECK, ang_up) for p in HEAD_SIDE]], head=True))
 
         keys = []
         # side
@@ -228,12 +231,18 @@ def main(out_path):
             else:
                 keys.append((e1[0], e1[1], e2[0], e2[1], n[0], n[1], 0, 0, 0, 0))
 
+        # side, head up (howling)
+        e = st.point(rot(HEAD_SIDE_KEY["eye"], NECK, ang_up), head=True)
+        n = st.point(rot(HEAD_SIDE_KEY["nose"], NECK, ang_up), head=True)
+        keys.append((e[0], e[1], -1, -1, n[0], n[1], 0, 0, 0, 0))
+
         # ears
         for style in range(3):
             add("ear%d_0" % style, st.render([EAR_SIDE[style]], head=True))
             add("ear%d_1" % style, st.render([[rot(p, NECK, ang_down) for p in EAR_SIDE[style]]], head=True))
             add("ear%d_2" % style, st.render(EAR_FRONT[style], head=True))
             parts["ear%d_3" % style] = parts["ear%d_2" % style]
+            add("ear%d_4" % style, st.render([[rot(p, NECK, ang_up) for p in EAR_SIDE[style]]], head=True))
 
         for t in range(3):
             for fr in range(2):
@@ -246,9 +255,9 @@ def main(out_path):
         s = "static const WolfStageArt wolf_art_%s = {\n  %d, %d,\n  %s,\n  {%s},\n  {%s},\n  {%s},\n  {%s},\n  {%s}\n};\n\n" % (
             name, st.cw, st.ch, P("body"),
             ", ".join(P("legs%d" % f) for f in range(5)),
-            ", ".join(P("head%d" % i) for i in range(4)),
+            ", ".join(P("head%d" % i) for i in range(5)),
             ", ".join("{%s}" % ", ".join(str(v) for v in kk) for kk in keys),
-            ", ".join("{%s}" % ", ".join(P("ear%d_%d" % (e, i)) for i in range(4)) for e in range(3)),
+            ", ".join("{%s}" % ", ".join(P("ear%d_%d" % (e, i)) for i in range(5)) for e in range(3)),
             ", ".join("{%s}" % ", ".join(P("tail%d_%d" % (t, f)) for f in range(2)) for t in range(3)))
         out.append(s)
         stage_syms.append("&wolf_art_%s" % name)
