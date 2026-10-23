@@ -1,6 +1,64 @@
 #include "WolfScene.h"
-#include "WolfArt.h"
+#if !PET_INSECT
+#include "PetSpecies.h"
+#include PET_ART
 #include "WolfProps.h"
+
+// which prop plays the "visitor" and the "flyer" for this pet (see PetSpecies.h)
+#if PET_PREY == 1            // a mouse: small, quick, barely hops
+  #define PREY_SIT_R mouse_sit_r
+  #define PREY_SIT_L mouse_sit_l
+  #define PREY_SIT_W MOUSE_SIT_R_W
+  #define PREY_SIT_H MOUSE_SIT_R_H
+  #define PREY_HOP_R mouse_run_r
+  #define PREY_HOP_L mouse_run_l
+  #define PREY_HOP_W MOUSE_RUN_R_W
+  #define PREY_HOP_H MOUSE_RUN_R_H
+  #define PREY_ARC 1
+  #define PREY_IN_SPEED 38
+  #define PREY_OUT_SPEED 70
+#elif PET_PREY == 2          // a frog
+  #define PREY_SIT_R frog_sit_r
+  #define PREY_SIT_L frog_sit_l
+  #define PREY_SIT_W FROG_SIT_R_W
+  #define PREY_SIT_H FROG_SIT_R_H
+  #define PREY_HOP_R frog_hop_r
+  #define PREY_HOP_L frog_hop_l
+  #define PREY_HOP_W FROG_HOP_R_W
+  #define PREY_HOP_H FROG_HOP_R_H
+  #define PREY_ARC 5
+  #define PREY_IN_SPEED 22
+  #define PREY_OUT_SPEED 34
+#else                        // a rabbit
+  #define PREY_SIT_R bunny_sit_r
+  #define PREY_SIT_L bunny_sit_l
+  #define PREY_SIT_W BUNNY_SIT_R_W
+  #define PREY_SIT_H BUNNY_SIT_R_H
+  #define PREY_HOP_R bunny_hop_r
+  #define PREY_HOP_L bunny_hop_l
+  #define PREY_HOP_W BUNNY_HOP_R_W
+  #define PREY_HOP_H BUNNY_HOP_R_H
+  #define PREY_ARC 6
+  #define PREY_IN_SPEED 26
+  #define PREY_OUT_SPEED 40
+#endif
+#if PET_FLYER == 1           // a bee: quicker, tighter wobble
+  #define FLYER_A bee0
+  #define FLYER_B bee1
+  #define FLYER_W BEE0_W
+  #define FLYER_H BEE0_H
+  #define FLYER_SPEED 30
+  #define FLYER_AMP 4.0f
+  #define FLYER_FREQ 150.0f
+#else
+  #define FLYER_A fly0
+  #define FLYER_B fly1
+  #define FLYER_W FLY0_W
+  #define FLYER_H FLY0_H
+  #define FLYER_SPEED 20
+  #define FLYER_AMP 7.0f
+  #define FLYER_FREQ 420.0f
+#endif
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,7 +124,7 @@ static inline bool pattern(uint8_t level, int x, int y) {
 }
 
 static uint8_t levelFor(uint8_t region, const WolfTraits& t) {
-  uint8_t base = t.shade;
+  uint8_t base = t.shade < PET_MIN_SHADE ? PET_MIN_SHADE : t.shade;
   switch (region) {
     case R_LEG:     return t.marking == 1 ? 3 : base;
     case R_MUZZLE:  return t.marking == 2 ? 0 : base;
@@ -389,7 +447,7 @@ void WolfScene::update(uint32_t now, uint32_t dt, uint8_t stage, int rw, int vw)
 
 // ------------------------------------------------------- random activities --
 enum { EV_BUNNY, EV_BIRD, EV_FLY, EV_DIG, EV_SLEEP, EV_REST, EV_HOWL, EV_SHAKE, EV_YAWN, EV_CHASE,
-       EV_SNIFF, EV_STRETCH, EV_ZOOM };
+       EV_SNIFF, EV_STRETCH, EV_ZOOM, EV_POUNCE };
 
 static inline int arc(uint32_t t, uint32_t period, int height) {     // 0 -> height -> 0 over `period` ms
   if (t >= period) return 0;
@@ -398,11 +456,7 @@ static inline int arc(uint32_t t, uint32_t period, int height) {     // 0 -> hei
 }
 
 uint8_t WolfScene::pickEvent(uint8_t stage) {
-  static const uint8_t wt[3][EV_COUNT] = {
-    // bunny bird fly dig sleep rest howl shake yawn chase sniff stretch zoom
-    {   3,    2,   3,  2,  4,    1,   1,   2,    2,   4,    2,    2,      4 },   // pup
-    {   3,    2,   3,  3,  3,    1,   2,   2,    2,   3,    2,    2,      3 },   // adolescent
-    {   3,    2,   2,  3,  3,    2,   3,   2,    2,   1,    3,    2,      1 } }; // adult
+  static const uint8_t wt[3][EV_COUNT] = PET_WEIGHTS;
   if (stage > 2) stage = 2;
   int total = 0;
   for (int i = 0; i < EV_COUNT; i++) if (i != _last_ev) total += wt[stage][i];
@@ -417,7 +471,7 @@ uint8_t WolfScene::pickEvent(uint8_t stage) {
 
 void WolfScene::beginEvent(uint8_t kind, uint32_t now, uint8_t stage) {
   (void)stage;
-  static const uint16_t dur[EV_COUNT] = { 0, 0, 0, 4300, 0, 0, 3800, 1500, 2300, 3000, 4600, 2500, 3400 };
+  static const uint16_t dur[EV_COUNT] = { 0, 0, 0, 4300, 0, 0, 3800, 1500, 2300, 3000, 4600, 2500, 3400, 0 };
   _last_ev = kind;
   uint32_t d = dur[kind];
   if (kind == EV_SLEEP) d = rnd(9000, 15000);
@@ -439,7 +493,7 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
   switch (a.mode) {
     case M_BUNNY: {                       // a rabbit hops in, the wolf creeps over and sniffs it, the rabbit hops away
       fixed = false;
-      const int bw = BUNNY_SIT_R_W;
+      const int bw = PREY_SIT_W;
       int bx = _ev.px16 / 16;
       switch (_ev.phase) {
         case 0: {
@@ -456,7 +510,7 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
         }
         case 1: {                          // rabbit hops in
           uint32_t cyc = (now - _ev.pt0) % 700;
-          if (cyc < 450) _ev.px16 += (int32_t)_ev.pdir * 26 * 16 * (int32_t)dt / 1000;
+          if (cyc < 450) _ev.px16 += (int32_t)_ev.pdir * PREY_IN_SPEED * 16 * (int32_t)dt / 1000;
           bx = _ev.px16 / 16;
           if (_ev.pdir < 0 ? bx <= (int)_ev.aux : bx >= (int)_ev.aux) { _ev.phase = 2; _ev.pt0 = now; }
           break;
@@ -477,7 +531,7 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
           break;
         case 5: {                          // the rabbit hops off
           uint32_t cyc = (now - _ev.pt0) % 560;
-          if (cyc < 380) _ev.px16 += (int32_t)_ev.pdir * 40 * 16 * (int32_t)dt / 1000;
+          if (cyc < 380) _ev.px16 += (int32_t)_ev.pdir * PREY_OUT_SPEED * 16 * (int32_t)dt / 1000;
           bx = _ev.px16 / 16;
           if (bx < -bw - 2 || bx > SCREEN_W + 2) startMode(M_HAPPY, now, 1200);
           break;
@@ -544,8 +598,8 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
           break;
         case 1: {
           uint32_t t = now - _ev.pt0;
-          _ev.px16 += (int32_t)_ev.pdir * 20 * 16 * (int32_t)dt / 1000;
-          _ev.py16 = (int32_t)(_ev.aux + 7.0f * sinf(t / 420.0f)) * 16;
+          _ev.px16 += (int32_t)_ev.pdir * FLYER_SPEED * 16 * (int32_t)dt / 1000;
+          _ev.py16 = (int32_t)(_ev.aux + FLYER_AMP * sinf(t / FLYER_FREQ)) * 16;
           _ev.frame = (uint8_t)((t / 130) & 1);
           int bx = _ev.px16 / 16 + 4, wc = wx + rw / 2;
           a.dir = bx > wc ? 1 : -1;
@@ -596,6 +650,48 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
       a.frame_ms += dt;
       break;
 
+    case M_POUNCE: {                       // stalk a little creature in the grass, crouch, spring
+      fixed = false;
+      const int bw = PREY_SIT_W;
+      const int mouth = a.dir > 0 ? wx + rw - 3 : wx + 2;
+      switch (_ev.phase) {
+        case 0: {
+          int room_r = SCREEN_W - (wx + rw), room_l = wx;
+          int d = room_r >= room_l ? 1 : -1;
+          int tx = d > 0 ? mouth + 46 : mouth - 46 - bw;
+          if (tx > SCREEN_W - bw - 6) tx = SCREEN_W - bw - 6;
+          if (tx < 6) tx = 6;
+          a.dir = d;
+          _ev.px16 = tx * 16; _ev.pdir = -d;                     // it faces the hunter
+          _ev.phase = 1; _ev.pt0 = now; _ev.show = true;
+          break;
+        }
+        case 1: {                          // stalking, low and slow
+          int bx = _ev.px16 / 16;
+          int gap = a.dir > 0 ? bx - mouth : mouth - (bx + bw);
+          if (gap <= 24 || now - _ev.pt0 > 9000) { _ev.phase = 2; _ev.pt0 = now; _ev.aux = (uint32_t)(gap > 10 ? gap - 8 : 4); }
+          else walkStep(a, dt, 8, rw);
+          break;
+        }
+        case 2:                            // crouch, tail twitching
+          if (now - _ev.pt0 > 900) { _ev.phase = 3; _ev.pt0 = now; }
+          break;
+        case 3: {                          // spring!
+          uint32_t t = now - _ev.pt0;
+          if (t < 420) a.x16 += (int32_t)a.dir * (int32_t)_ev.aux * 16 * (int32_t)dt / 420;
+          if (t >= 420) { _ev.phase = 4; _ev.pt0 = now; _ev.pdir = (int8_t)a.dir; }   // the little one bolts the way the hunter faces
+          break;
+        }
+        case 4: {                          // landed with nothing but grass; the prey scurries off
+          _ev.px16 += (int32_t)_ev.pdir * 80 * 16 * (int32_t)dt / 1000;
+          int bx = _ev.px16 / 16;
+          if (bx < -bw - 2 || bx > SCREEN_W + 2) startMode(M_HAPPY, now, 1500);
+          break;
+        }
+      }
+      break;
+    }
+
     case M_STRETCH:
       if (now >= a.until) { startMode(rnd(0, 1) ? (uint8_t)M_YAWN : (uint8_t)M_IDLE, now, 2300); fixed = false; }
       break;
@@ -640,10 +736,10 @@ void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
         uint32_t cyc = _ev.phase == 1 ? (now - _ev.pt0) % 700 : (now - _ev.pt0) % 560;
         bool right = _ev.pdir > 0;
         if (moving) {
-          int lift = arc(cyc, _ev.phase == 1 ? 450 : 380, 6);
-          d.drawXbm(px, GROUND_Y - (BUNNY_HOP_R_H - 1) - lift, right ? bunny_hop_r : bunny_hop_l, BUNNY_HOP_R_W, BUNNY_HOP_R_H);
+          int lift = arc(cyc, _ev.phase == 1 ? 450 : 380, PREY_ARC);
+          d.drawXbm(px, GROUND_Y - (PREY_HOP_H - 1) - lift, right ? PREY_HOP_R : PREY_HOP_L, PREY_HOP_W, PREY_HOP_H);
         } else {
-          d.drawXbm(px, GROUND_Y - (BUNNY_SIT_R_H - 1), right ? bunny_sit_r : bunny_sit_l, BUNNY_SIT_R_W, BUNNY_SIT_R_H);
+          d.drawXbm(px, GROUND_Y - (PREY_SIT_H - 1), right ? PREY_SIT_R : PREY_SIT_L, PREY_SIT_W, PREY_SIT_H);
         }
         break;
       }
@@ -654,8 +750,19 @@ void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
         d.drawXbm(px, _ev.py16 / 16, right ? bm : bl, BIRD0_R_W, BIRD0_R_H);
         break;
       }
+      case M_POUNCE: {
+        bool right = _ev.pdir > 0;
+        if (_ev.phase == 4) {
+          uint32_t cyc = (now - _ev.pt0) % 280;
+          int lift = arc(cyc, 280, PREY_ARC > 2 ? 3 : 1);
+          d.drawXbm(px, GROUND_Y - (PREY_HOP_H - 1) - lift, right ? PREY_HOP_R : PREY_HOP_L, PREY_HOP_W, PREY_HOP_H);
+        } else {
+          d.drawXbm(px, GROUND_Y - (PREY_SIT_H - 1), right ? PREY_SIT_R : PREY_SIT_L, PREY_SIT_W, PREY_SIT_H);
+        }
+        break;
+      }
       case M_FLY:
-        d.drawXbm(px, _ev.py16 / 16, _ev.frame ? fly1 : fly0, FLY0_W, FLY0_H);
+        d.drawXbm(px, _ev.py16 / 16, _ev.frame ? FLYER_B : FLYER_A, FLYER_W, FLYER_H);
         break;
       default: break;
     }
@@ -664,12 +771,12 @@ void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
   switch (a.mode) {
     case M_HOWL: {
       int mx = hx < SCREEN_W / 2 ? 104 : 11;
-      d.drawXbm(mx, 12, moon, MOON_W, MOON_H);
+      if (PET_CALL_MOON) d.drawXbm(mx, 12, moon, MOON_W, MOON_H);
       if (e > 700) {
         int tx = hx + (a.dir > 0 ? 20 : -20);
         if (tx < 22) tx = 22;
         if (tx > SCREEN_W - 22) tx = SCREEN_W - 22;
-        d.drawTextCentered(tx, 11, _stage == STAGE_PUP ? "aroo~" : "AWOOOO~");
+        d.drawTextCentered(tx, 11, _stage == STAGE_PUP ? PET_CALL_PUP : PET_CALL_ADULT);
       }
       break;
     }
@@ -925,6 +1032,13 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
       case M_SNIFF: p.head = 1; p.legs = _w.moving ? 1 + _w.legf : 0; break;
       case M_STRETCH: p.head = 1; break;
       case M_ZOOM: p.legs = 1 + _w.legf; break;
+      case M_POUNCE:
+        p.head = 1;
+        if (_ev.phase == 1) p.legs = _w.moving ? 1 + _w.legf : 0;
+        if (_ev.phase == 2) p.tail = ((now / 90) & 1);
+        if (_ev.phase == 3) { p.legs = 2; lift = arc(now - _ev.pt0, 420, 13); }
+        if (_ev.phase == 4) p.head = 1;
+        break;
       case M_BARK: {
         uint32_t e = now - _w.t0;
         if (e < 500) p.head = 2;
@@ -946,7 +1060,7 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
     if (hx > SCREEN_W - 20) hx = SCREEN_W - 20;
     int ty = GROUND_Y - A.ch - 9;
     if (ty < 10) ty = 10;
-    d.drawTextCentered(hx, ty, "WOOF!");
+    d.drawTextCentered(hx, ty, PET_BARK_TEXT);
   }
 
   // hearts after a mating
@@ -961,3 +1075,5 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   drawHud(d, w, batt_mv);
   return 110;   // ~9 frames per second
 }
+
+#endif   // !PET_INSECT

@@ -1,4 +1,5 @@
 #pragma once
+#include "PetSpecies.h"
 // WolfCore: game rules for the MeshCore wolf pup.  No Arduino / MeshCore dependencies,
 // so it can be unit-tested on a PC (see test/host_sim.cpp).
 
@@ -43,7 +44,7 @@
 //   0xA1 BRED    "we mated" notice to the other radio (extends the visit)
 //   0xA2 ACK     host accepts the visitor and says which wolf greets it
 //   0xA3 PING    keep-alive while a visit is going on
-#define WOLF_PKT_TYPE            0xA0      // high nibble
+#define WOLF_PKT_TYPE            PET_PKT_TYPE   // high nibble; one family per kind of pet (see PetSpecies.h)
 #define WOLF_PKT_VISIT           0x0       // low nibble
 #define WOLF_PKT_BRED            0x1
 #define WOLF_PKT_ACK             0x2
@@ -151,6 +152,7 @@ public:
   static uint8_t  stageOf(const Wolf& w);
   static uint8_t  stageFromMonths(uint32_t months);
   static bool     isAdult(const Wolf& w) { return ageMonths(w) >= WOLF_ADULT_MONTHS; }
+  static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return m >= PET_HIDDEN_FROM && m < PET_HIDDEN_TO; }   // e.g. a chrysalis
   static bool     related(uint32_t g1, uint32_t s1, uint32_t d1, uint32_t g2, uint32_t s2, uint32_t d2);
   uint32_t mixGenome(uint32_t mother, uint32_t father);
   void     cycleWolf();

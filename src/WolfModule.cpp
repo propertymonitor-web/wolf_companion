@@ -6,7 +6,7 @@
 
 extern DataStore store;   // defined in main.cpp
 
-#define WOLF_STATE_FILE "/wolf_pet"
+#define WOLF_STATE_FILE PET_STATE_FILE
 
 // ---- platform glue ---------------------------------------------------------------------------
 static File wolfOpenWrite(FILESYSTEM* fs, const char* filename) {

@@ -139,13 +139,20 @@ def pack(im):
 
 
 # ----------------------------------------------------------------- legs ----
+LEG_X = (13.0, 19.5, 40.5, 34.5)     # hind-near, hind-far, fore-near, fore-far hip positions
+LEG_TW = (3.4, 3.0)                  # thigh half-width (near, far)
+FRONT_EYE = ((-6, -2), (4, -2))      # eye offsets from the front-face centre
+FRONT_NOSE = (-0.5, 6)
+FRONT_MOUTH = ((-3, 8), (3, 12))
+
+
 def leg_poly(hx, dx, lift, lk, near):
     hip = GROUND - (GROUND - HIP) * lk
     foot = GROUND - lift
     mid_y = hip + (foot - hip) * 0.5
     mx = hx + dx * 0.5
     fx = hx + dx
-    tw = 3.4 if near else 3.0            # thigh half-width
+    tw = LEG_TW[0] if near else LEG_TW[1]
     return [(hx - tw, hip), (hx + tw, hip), (mx + 1.8, mid_y), (fx + 1.2, foot - 3.0),
             (fx + 1.5, foot - 1.2), (fx + 4.2, foot - 0.2), (fx + 4.2, foot + 0.9), (fx - 1.6, foot + 0.9),
             (fx - 1.6, foot - 1.2), (fx - 1.0, foot - 3.0), (mx - 1.7, mid_y)]
@@ -161,7 +168,7 @@ def legs_for_frame(frame, lk):
             ang = a + phase
             return (round(3.4 * math.sin(ang)), round(2.4 * max(0.0, math.cos(ang))))
         offs = [sw(0), sw(math.pi), sw(math.pi), sw(0)]  # nh, fh, nf, ff
-    spec = [(13.0, offs[0], True), (19.5, offs[1], False), (40.5, offs[2], True), (34.5, offs[3], False)]
+    spec = [(LEG_X[0], offs[0], True), (LEG_X[1], offs[1], False), (LEG_X[2], offs[2], True), (LEG_X[3], offs[3], False)]
     return [leg_poly(hx, o[0], o[1], lk, near) for hx, o, near in spec]
 
 
@@ -222,10 +229,10 @@ def main(out_path):
         keys.append((e[0], e[1], -1, -1, n[0], n[1], 0, 0, 0, 0))
         # front (closed) and front (bark: mouth open)
         for opened in (False, True):
-            e1 = st.point((FCX - 6, FCY - 2), head=True); e2 = st.point((FCX + 4, FCY - 2), head=True)
-            n = st.point((FCX - 0.5, FCY + 6), head=True)
+            e1 = st.point((FCX + FRONT_EYE[0][0], FCY + FRONT_EYE[0][1]), head=True); e2 = st.point((FCX + FRONT_EYE[1][0], FCY + FRONT_EYE[1][1]), head=True)
+            n = st.point((FCX + FRONT_NOSE[0], FCY + FRONT_NOSE[1]), head=True)
             if opened:
-                m0 = st.point((FCX - 3, FCY + 8), head=True); m1 = st.point((FCX + 3, FCY + 12), head=True)
+                m0 = st.point((FCX + FRONT_MOUTH[0][0], FCY + FRONT_MOUTH[0][1]), head=True); m1 = st.point((FCX + FRONT_MOUTH[1][0], FCY + FRONT_MOUTH[1][1]), head=True)
                 keys.append((e1[0], e1[1], e2[0], e2[1], n[0], n[1], m0[0], m0[1],
                              max(2, m1[0] - m0[0]), max(2, m1[1] - m0[1])))
             else:
@@ -269,4 +276,13 @@ def main(out_path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "src", "WolfArt.h"))
+    import argparse, importlib
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--species", default="wolf")
+    ap.add_argument("out", nargs="?")
+    a = ap.parse_args()
+    here = os.path.dirname(os.path.abspath(__file__))
+    if a.species != "wolf":
+        sys.path.insert(0, here)
+        getattr(importlib.import_module("pet_species"), "apply_" + a.species)(globals())
+    main(a.out or os.path.join(here, "..", "src", "WolfArt_%s.h" % a.species))

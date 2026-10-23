@@ -20,7 +20,7 @@ if not os.path.isdir(ui):
 if not os.path.exists(os.path.join(ui, "NovaPages.h")):
     sys.exit("apply NOVA/ORION first (NovaPages.h is missing)")
 
-for f in sorted(glob.glob(os.path.join(root, "src", "Wolf*"))):
+for f in sorted(glob.glob(os.path.join(root, "src", "Wolf*")) + [os.path.join(root, "src", "PetSpecies.h")]):
     shutil.copy(f, ui)
     print("copied", os.path.basename(f))
 

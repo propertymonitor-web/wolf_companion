@@ -304,7 +304,7 @@ bool WolfGame::sendRequest(uint32_t now) {
   int idx = -1;
   for (int k = 0; k < count; k++) {
     int i = (_trip_idx + k) % count;
-    if (away[i].away || pack[i].preg_secs_left) continue;   // pregnant mothers stay home
+    if (away[i].away || pack[i].preg_secs_left || hidden(pack[i])) continue;   // pregnant mothers (and chrysalises) stay home
     idx = i;
     break;
   }

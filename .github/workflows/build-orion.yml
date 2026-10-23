@@ -10,6 +10,11 @@ on:
         type: choice
         default: metric
         options: [metric, mph]
+      species:
+        description: "Which pet"
+        type: choice
+        default: wolf
+        options: [wolf, fox, cat, bear, butterfly]
       meshcore_ref:
         description: "MeshCore commit to build on"
         type: string
@@ -52,7 +57,8 @@ jobs:
       - name: Wolf game-rule tests (PC build)
         run: |
           set -o pipefail
-          g++ -std=c++17 -I src -I mc/src test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp -o host_sim
+          SP=$(echo "${{ inputs.species }}" | tr a-z A-Z)
+          g++ -std=c++17 -I src -I mc/src -DPET_$SP=1 test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp src/WolfInsect.cpp -o host_sim
           ./host_sim logic | grep -v "\[alert\]"
           ./host_sim mix | grep -E "STUCK|stage"
 
@@ -63,7 +69,7 @@ jobs:
 
       - name: Build firmware
         env:
-          PLATFORMIO_BUILD_FLAGS: -DNOVA_ORION=1 ${{ inputs.units == 'mph' && '-DNOVA_MPH=1' || '' }}
+          PLATFORMIO_BUILD_FLAGS: -DNOVA_ORION=1 -DPET_${{ inputs.species == 'wolf' && 'WOLF' || inputs.species == 'fox' && 'FOX' || inputs.species == 'cat' && 'CAT' || inputs.species == 'bear' && 'BEAR' || 'BUTTERFLY' }}=1 ${{ inputs.units == 'mph' && '-DNOVA_MPH=1' || '' }}
         run: |
           set -o pipefail
           pip install platformio
@@ -87,7 +93,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: orion-wolf-${{ inputs.units }}
+          name: orion-${{ inputs.species }}-${{ inputs.units }}
           path: out/
 
       - name: Publish release (private repo)
@@ -96,9 +102,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag }}
           UNITS: ${{ inputs.units }}
+          SPECIES: ${{ inputs.species }}
         run: |
-          cp out/firmware-merged.bin "orion-wolf-heltec_v4-$UNITS-merged.bin"
-          cp out/firmware.bin "orion-wolf-heltec_v4-$UNITS-update.bin"
-          gh release create "$TAG" "orion-wolf-heltec_v4-$UNITS-merged.bin" "orion-wolf-heltec_v4-$UNITS-update.bin" \
-            --title "ORION + wolf ($UNITS)" \
+          cp out/firmware-merged.bin "orion-$SPECIES-heltec_v4-$UNITS-merged.bin"
+          cp out/firmware.bin "orion-$SPECIES-heltec_v4-$UNITS-update.bin"
+          gh release create "$TAG" "orion-$SPECIES-heltec_v4-$UNITS-merged.bin" "orion-$SPECIES-heltec_v4-$UNITS-update.bin" \
+            --title "ORION + $SPECIES ($UNITS)" \
             --notes "LODESTAR ORION with the wolf pet after the splash. Heltec V4. Flash the -merged.bin file for a fresh install; the -update.bin file is for updating an existing install."

@@ -98,6 +98,71 @@ def butterfly(frame):
     return fin(im, w, h)
 
 
+
+# --------------------------------------------------------------- mouse ----
+def mouse_sit():
+    w, h = 10, 7
+    im, d = canvas(w, h)
+    ell(d, 4.5, 4.4, 3.4, 2.3)                    # body
+    ell(d, 7.7, 4.0, 1.7, 1.5)                    # head
+    ell(d, 7.0, 2.1, 1.0, 1.0)                    # ear
+    poly(d, [(9.0, 4.2), (10.2, 4.7), (9.0, 5.0)])  # nose
+    d.line((P(1.5), P(5.0), P(-0.3), P(6.4)), fill=255, width=P(1) // 2)   # tail
+    ell(d, 8.2, 3.6, 0.35, 0.35, 0)
+    return fin(im, w, h)
+
+
+def mouse_run():
+    w, h = 12, 6
+    im, d = canvas(w, h)
+    ell(d, 5.5, 3.6, 4.2, 1.9)
+    ell(d, 9.6, 3.3, 1.6, 1.3)
+    ell(d, 8.8, 1.7, 0.9, 0.9)
+    poly(d, [(10.8, 3.4), (12.2, 3.9), (10.8, 4.2)])
+    d.line((P(1.4), P(3.8), P(-0.5), P(2.4)), fill=255, width=P(1) // 2)
+    return fin(im, w, h)
+
+
+# ---------------------------------------------------------------- frog ----
+def frog_sit():
+    w, h = 10, 8
+    im, d = canvas(w, h)
+    ell(d, 4.8, 5.0, 3.6, 2.6)
+    ell(d, 7.4, 3.3, 2.0, 1.7)
+    ell(d, 8.0, 1.7, 0.9, 0.9); ell(d, 6.6, 1.9, 0.9, 0.9)       # eye bumps
+    poly(d, [(1.0, 7.9), (3.4, 6.0), (5.0, 7.9)])                # folded hind leg
+    ell(d, 8.2, 1.6, 0.35, 0.35, 0)
+    return fin(im, w, h)
+
+
+def frog_hop():
+    w, h = 13, 7
+    im, d = canvas(w, h)
+    ell(d, 6.0, 3.4, 3.8, 1.8)
+    ell(d, 9.8, 2.6, 1.9, 1.5)
+    ell(d, 10.4, 1.3, 0.8, 0.8)
+    poly(d, [(2.0, 4.0), (0.0, 6.8), (1.2, 6.9), (4.0, 4.6)])    # legs stretched back
+    poly(d, [(10.5, 4.0), (12.8, 6.0), (12.8, 6.9), (10.2, 5.0)])
+    ell(d, 10.6, 1.2, 0.3, 0.3, 0)
+    return fin(im, w, h)
+
+
+# ----------------------------------------------------------------- bee ----
+def bee(frame):
+    w, h = 11, 8
+    im, d = canvas(w, h)
+    ell(d, 5.5, 5.0, 3.8, 2.3)                                   # body
+    ell(d, 9.3, 4.6, 1.4, 1.3)                                   # head
+    for x in (3.6, 5.6):                                         # stripes
+        d.rectangle((P(x), P(2.4), P(x + 0.7), P(7.8)), fill=0)
+    poly(d, [(1.6, 5.2), (0.0, 5.6), (1.6, 6.0)])                # stinger
+    if frame == 0:
+        ell(d, 5.0, 1.8, 2.2, 1.5); ell(d, 7.4, 1.6, 1.6, 1.2)    # wings up
+    else:
+        ell(d, 4.6, 2.9, 2.6, 1.0); ell(d, 7.2, 2.9, 1.8, 0.9)    # wings level
+    ell(d, 9.8, 4.2, 0.3, 0.3, 0)
+    return fin(im, w, h)
+
 # ---------------------------------------------------------------- moon ----
 def moon():
     w, h = 13, 13
@@ -145,6 +210,10 @@ def main(path):
         emit("bird%d_r" % f, im, out); emit("bird%d_l" % f, flip(im), out)
     for f in range(2):
         emit("fly%d" % f, butterfly(f), out)
+    for n, im in [("mouse_sit", mouse_sit()), ("mouse_run", mouse_run()), ("frog_sit", frog_sit()), ("frog_hop", frog_hop())]:
+        emit(n + "_r", im, out); emit(n + "_l", flip(im), out)
+    for f in range(2):
+        emit("bee%d" % f, bee(f), out)
     emit("moon", moon(), out)
     open(path, "w").write("\n".join(out))
     print("wrote", path)

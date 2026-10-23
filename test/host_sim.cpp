@@ -79,6 +79,9 @@ static void deliver(MockHost& from, WolfGame& to, uint32_t now) {
   while (!from.out.empty()) { auto p = from.out.front(); from.out.pop_front(); to.onPacket(p.data(), (int)p.size(), now); }
 }
 
+#if PET_INSECT
+static int cmd_sheet(const char*) { return 0; }
+#else
 static int cmd_sheet(const char* path) {
   FILE* f = fopen(path, "w");
   MockDisplay d;
@@ -114,6 +117,7 @@ static int cmd_sheet(const char* path) {
   return 0;
 }
 
+#endif
 static int cmd_anim(const char* path) {
   FILE* f = fopen(path, "w");
   MockHost h(12345, 0x7CA95E21, 0x11223344);
@@ -174,7 +178,7 @@ static int cmd_mix() {
     for (int i = 0; i < 9000; i++, t += 110) {          // 16 minutes
       if (i % 400 == 200) g.treat_pending = 1;           // and a treat now and then, landing anywhere
       d.startFrame(0); sc.render(d, t, 3900);
-      int m = sc.debugMode(); ms[m]++;
+      int m = sc.debugMode(); ms[m]++; if (getenv("DBG") && stage==0 && m==2 && i%40==0) printf("i=%d seek\n", i);
       if (m == last) run++; else run = 0;
       if (run > 300 && m != 8 && m != 6) { if (run == 301) { printf("  STUCK in mode %d for 33 s\\n", m); stuck_total++; } }
       if (pdir && sc.debugDir() != pdir) turns[m]++;
@@ -184,9 +188,9 @@ static int cmd_mix() {
     }
     (void)prev;
     printf("stage %d: %d mode changes in 16 min\n  frames per mode:", stage, sw);
-    for (int m = 0; m < 23; m++) printf(" %d:%d", m, ms[m]);
+    for (int m = 0; m < 24; m++) printf(" %d:%d", m, ms[m]);
     printf("\n  turns per mode:");
-    for (int m = 0; m < 23; m++) printf(" %d:%d", m, turns[m]);
+    for (int m = 0; m < 24; m++) printf(" %d:%d", m, turns[m]);
     printf("\n");
   }
   return stuck_total;
