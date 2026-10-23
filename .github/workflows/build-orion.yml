@@ -15,6 +15,19 @@ on:
         type: choice
         default: wolf
         options: [wolf, fox, cat, bear, butterfly, gator, croc, pig]
+      env:
+        description: "PlatformIO environment (the radio). Default is the Heltec V4"
+        type: string
+        default: heltec_v4_companion_radio_ble
+      board:
+        description: "Short name of the radio, used in file names (e.g. heltec-v4, rak4631)"
+        type: string
+        default: heltec_v4
+      kind:
+        description: "Chip family: esp32 or nrf52"
+        type: choice
+        default: esp32
+        options: [esp32, nrf52]
       meshcore_ref:
         description: "MeshCore commit to build on"
         type: string
@@ -31,7 +44,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      PIO_ENV: heltec_v4_companion_radio_ble
+      PIO_ENV: ${{ inputs.env }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +92,7 @@ jobs:
           echo "flags: $PLATFORMIO_BUILD_FLAGS"
           pip install platformio
           cd mc
-          pio run -e "$PIO_ENV" -t mergebin 2>&1 | tee ../build.log
+          if [ "${{ inputs.kind }}" = esp32 ]; then pio run -e "$PIO_ENV" -t mergebin 2>&1 | tee ../build.log; else pio run -e "$PIO_ENV" 2>&1 | tee ../build.log; fi
 
       - name: Show compile errors
         if: failure()
@@ -91,14 +104,20 @@ jobs:
       - name: Collect output
         run: |
           mkdir -p out
-          cp mc/.pio/build/"$PIO_ENV"/firmware-merged.bin out/
-          cp mc/.pio/build/"$PIO_ENV"/firmware.bin out/
+          B=mc/.pio/build/"$PIO_ENV"
+          if [ "${{ inputs.kind }}" = esp32 ]; then
+            cp $B/firmware-merged.bin out/
+            cp $B/firmware.bin out/
+          else
+            cp $B/firmware.uf2 out/
+            cp $B/firmware.zip out/ 2>/dev/null || true
+          fi
           git -C mc rev-parse HEAD > out/meshcore_commit.txt
           ls -la out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: orion-${{ inputs.species }}-${{ inputs.units }}
+          name: orion-${{ inputs.species }}-${{ inputs.board }}-${{ inputs.units }}
           path: out/
 
       - name: Publish release (private repo)
@@ -108,9 +127,15 @@ jobs:
           TAG: ${{ inputs.release_tag }}
           UNITS: ${{ inputs.units }}
           SPECIES: ${{ inputs.species }}
+          BOARD: ${{ inputs.board }}
+          KIND: ${{ inputs.kind }}
         run: |
-          cp out/firmware-merged.bin "orion-$SPECIES-heltec_v4-$UNITS-merged.bin"
-          cp out/firmware.bin "orion-$SPECIES-heltec_v4-$UNITS-update.bin"
-          gh release create "$TAG" "orion-$SPECIES-heltec_v4-$UNITS-merged.bin" "orion-$SPECIES-heltec_v4-$UNITS-update.bin" \
-            --title "ORION + $SPECIES ($UNITS)" \
-            --notes "LODESTAR ORION with the wolf pet after the splash. Heltec V4. Flash the -merged.bin file for a fresh install; the -update.bin file is for updating an existing install."
+          P="orion-$SPECIES-$BOARD-$UNITS"
+          if [ "$KIND" = esp32 ]; then
+            cp out/firmware-merged.bin "$P-merged.bin"; cp out/firmware.bin "$P-update.bin"; FILES="$P-merged.bin $P-update.bin"
+          else
+            cp out/firmware.uf2 "$P.uf2"; FILES="$P.uf2"
+            if [ -f out/firmware.zip ]; then cp out/firmware.zip "$P-update.zip"; FILES="$FILES $P-update.zip"; fi
+          fi
+          gh release create "$TAG" $FILES --title "ORION + $SPECIES ($BOARD, $UNITS)" \
+            --notes "LODESTAR ORION with the $SPECIES pet. Radio: $BOARD."
