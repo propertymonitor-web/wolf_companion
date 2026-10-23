@@ -2,20 +2,34 @@
 #include "WolfScene.h"
 #if PET_MYST
 extern PetSceneBase* make_pet_wolf(WolfGame*);
+extern const PaStage* const* art_pet_wolf();
 extern PetSceneBase* make_pet_fox(WolfGame*);
+extern const PaStage* const* art_pet_fox();
 extern PetSceneBase* make_pet_cat(WolfGame*);
+extern const PaStage* const* art_pet_cat();
 extern PetSceneBase* make_pet_bear(WolfGame*);
+extern const PaStage* const* art_pet_bear();
 extern PetSceneBase* make_pet_butterfly(WolfGame*);
 extern PetSceneBase* make_pet_gator(WolfGame*);
+extern const PaStage* const* art_pet_gator();
 extern PetSceneBase* make_pet_croc(WolfGame*);
+extern const PaStage* const* art_pet_croc();
 extern PetSceneBase* make_pet_pig(WolfGame*);
+extern const PaStage* const* art_pet_pig();
 extern PetSceneBase* make_pet_donkey(WolfGame*);
+extern const PaStage* const* art_pet_donkey();
 extern PetSceneBase* make_pet_unicorn(WolfGame*);
+extern const PaStage* const* art_pet_unicorn();
 extern PetSceneBase* make_pet_dragon(WolfGame*);
+extern const PaStage* const* art_pet_dragon();
 extern PetSceneBase* make_pet_kitsune(WolfGame*);
+extern const PaStage* const* art_pet_kitsune();
 extern PetSceneBase* make_pet_griffin(WolfGame*);
+extern const PaStage* const* art_pet_griffin();
 extern PetSceneBase* make_pet_phoenix(WolfGame*);
+extern const PaStage* const* art_pet_phoenix();
 extern PetSceneBase* make_pet_horse(WolfGame*);
+extern const PaStage* const* art_pet_horse();
 // the drawing buffers every quadruped scene shares (sizes must match MAX_CW / MAX_CH in WolfScene.cpp)
 uint8_t g_pet_reg[72 * 60];
 uint8_t g_pet_lit[72 * 60];
@@ -38,6 +52,25 @@ PetSceneBase* makePetScene(uint8_t sp, WolfGame* g) {
     case 13: return make_pet_phoenix(g);
     case 14: return make_pet_horse(g);
     default: return make_pet_wolf(g);
+  }
+}
+const PaStage* const* petArtOf(uint8_t sp) {
+  switch (sp) {
+    case 0: return art_pet_wolf();
+    case 1: return art_pet_fox();
+    case 2: return art_pet_cat();
+    case 3: return art_pet_bear();
+    case 5: return art_pet_gator();
+    case 6: return art_pet_croc();
+    case 7: return art_pet_pig();
+    case 8: return art_pet_donkey();
+    case 9: return art_pet_unicorn();
+    case 10: return art_pet_dragon();
+    case 11: return art_pet_kitsune();
+    case 12: return art_pet_griffin();
+    case 13: return art_pet_phoenix();
+    case 14: return art_pet_horse();
+    default: return 0;
   }
 }
 #endif

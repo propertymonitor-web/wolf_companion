@@ -21,7 +21,7 @@ if not os.path.isdir(ui):
 if not os.path.exists(os.path.join(ui, "NovaPages.h")):
     sys.exit("apply NOVA/ORION first (NovaPages.h is missing)")
 
-extra = [os.path.join(root, "src", n) for n in ("PetSpecies.h", "PetMirror.h", "PetEgg.h", "PetHud.h", "PetFactory.inc")]
+extra = [os.path.join(root, "src", n) for n in ("PetSpecies.h", "PetMirror.h", "PetEgg.h", "PetHud.h", "PetArtView.h", "PetFactory.inc")]
 if a.mystery:
     extra += sorted(glob.glob(os.path.join(root, "src", "Mystery*.cpp")))
 for f in sorted(glob.glob(os.path.join(root, "src", "Wolf*"))) + extra:

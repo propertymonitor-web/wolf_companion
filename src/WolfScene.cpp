@@ -94,6 +94,8 @@
 
 PET_NS_OPEN
 #include PET_ART
+#include "PetArtView.h"
+static const WolfStageArt* const* g_art = wolf_art_stages;     // the pictures the sprite maker uses right now
 
 #if PET_MYST
   #define EGG_LOOK 3          // a mystery egg gives nothing away
@@ -193,7 +195,7 @@ static void xorRect(int x, int y, int w, int h, int cw, int ch, bool mirror) {
 
 int wolfDrawSprite(DisplayDriver& d, uint32_t genome, uint8_t stage, int x, int ground_y, const WolfPose& pose) {
   if (stage > 2) stage = 2;
-  const WolfStageArt& A = *wolf_art_stages[stage];
+  const WolfStageArt& A = *g_art[stage];
   const int cw = A.cw, ch = A.ch;
   if (cw > MAX_CW || ch > MAX_CH) return cw;       // (cannot happen with the art we ship; keeps a bad art file from corrupting memory)
   WolfTraits t;
@@ -318,8 +320,26 @@ WolfScene::WolfScene(WolfGame* game) : g(game), _init(false), _last_ms(0), _rng(
   memset(&_ev, 0, sizeof(_ev));
   memset(&_hole, 0, sizeof(_hole));
   memset(&_pool, 0, sizeof(_pool));
-  _last_ev = 255; _force = 0; _stage = STAGE_ADULT; _rw = 60; _was_egg = false; _hatch_t0 = 0;
+  _last_ev = 255; _force = 0; _stage = STAGE_ADULT; _rw = 60; _was_egg = false; _hatch_t0 = 0; _art = nullptr; _chi = nullptr;
   _cp0[0] = _cp0[1] = 0;
+}
+
+WolfScene::~WolfScene() { delete (PaChimera*)_chi; }
+
+// mixed species: wear another pet's head.  (Falls back to our own head if the combination would not fit.)
+void WolfScene::setHead(uint8_t head_species) {
+#if PET_MYST
+  delete (PaChimera*)_chi; _chi = nullptr; _art = nullptr;
+  if (head_species == 255) return;
+  const PaStage* const* head = petArtOf(head_species);
+  if (!head) return;
+  PaChimera* c = new PaChimera;
+  if (paBuildChimera((const PaStage* const*)wolf_art_stages, head, *c, MAX_CW, MAX_CH)) { _chi = c; _art = c->ptr; }
+  else delete c;
+  _init = false;
+#else
+  (void)head_species;
+#endif
 }
 
 uint32_t WolfScene::rnd(uint32_t lo, uint32_t hi) {
@@ -1034,7 +1054,7 @@ void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
       break;
     }
     case M_FIRE: {
-      const WolfStageArt& SA = *wolf_art_stages[_stage];
+      const WolfStageArt& SA = *g_art[_stage];
       if (_ev.phase == 2) {
         uint32_t t = now - _ev.pt0;
 #if PET_FIRE == 1
@@ -1248,7 +1268,8 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   if (!g->count) return 500;
   const Wolf& w = g->pack[g->current];
   uint8_t stage = WolfGame::stageOf(w);
-  const WolfStageArt& A = *wolf_art_stages[stage];
+  g_art = _art ? (const WolfStageArt* const*)_art : wolf_art_stages;
+  const WolfStageArt& A = *g_art[stage];
   int rw = A.cw;
 
   if (WolfGame::isEgg(w)) {                       // not hatched yet: just the egg, rocking in its nest
@@ -1283,7 +1304,7 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   uint8_t vstage = STAGE_ADULT;
   if (g->visitor.active || _vphase != V_NONE) {
     vstage = WolfGame::stageFromMonths(g->visitor.months);
-    vw = wolf_art_stages[vstage]->cw;
+    vw = g_art[vstage]->cw;
   }
 
   _stage = stage; _rw = rw;

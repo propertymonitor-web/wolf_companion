@@ -30,6 +30,7 @@ private:
 #if PET_MYST
   PetSceneBase* _scene;
   uint8_t       _scene_sp;          // which pet's pictures _scene draws (a mixed family has several)
+  uint8_t       _scene_head;        // head species currently worn by _scene (0xFF none)
 #else
   WolfScene* _scene;
 #endif

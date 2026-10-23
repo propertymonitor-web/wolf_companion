@@ -70,6 +70,26 @@ int main(int argc, char** argv) {
       delete sc;
     }
   }
+  printf("== every mixed species draws ==\n");
+  {
+    MockHost h(4343, tailFor(1), 7); WolfGame g(&h); g.begin(0);
+    MockDisplay d; uint32_t now = 1000; int n = 0, nohead = 0;
+    for (uint8_t b = 0; b < WOLF_SPECIES_COUNT; b++) for (uint8_t hd = 0; hd < WOLF_SPECIES_COUNT; hd++) {
+      if (!WolfGame::chimeraOk(b, hd)) continue;
+      g.pack[0].kind = WolfGame::chimeraKind(b, hd);
+      g.pack[0].age_secs = WolfGame::eggSecs(g.pack[0].genome) + 30u * WOLF_SECS_PER_MONTH;
+      CHECK(WolfGame::speciesOf(g.pack[0]) == b && WolfGame::headOf(g.pack[0]) == hd, "kind code splits into body %d head %d", b, hd);
+      PetSceneBase* sc = makePetScene(b, &g);
+      sc->setHead(hd);
+      long ink = 0;
+      for (int i = 0; i < 120; i++, now += 110) { d.startFrame(0); sc->render(d, now, 3900); for (int q = 0; q < 128 * 64; q++) ink += d.px[q]; }
+      CHECK(ink > 120 * 40, "%s body + %s head draws something", petNameOf(b), petNameOf(hd));
+      if (!petArtOf(hd)) nohead++;
+      delete sc; n++;
+    }
+    printf("  %d mixed species drawn, %d without head art\n", n, nohead);
+    CHECK(n > 150, "plenty of mixed species");
+  }
   printf(fails ? "SOME CHECKS FAILED\n" : "all checks passed\n");
   return fails ? 1 : 0;
 }

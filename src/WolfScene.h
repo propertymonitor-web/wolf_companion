@@ -3,15 +3,18 @@
 
 #include <helpers/ui/DisplayDriver.h>
 #include "WolfCore.h"
+#include "PetArtView.h"
 
 // Mystery egg build: each pet's scene is compiled into its own namespace (see MysteryXxx.cpp) and reached through this.
 class PetSceneBase {
 public:
   virtual ~PetSceneBase() {}
   virtual int render(DisplayDriver& d, uint32_t now_ms, uint16_t batt_mv) = 0;
+  virtual void setHead(uint8_t head_species) { (void)head_species; }     // mixed species: wear this pet's head (255 = none)
 };
 #if PET_MYST
   PetSceneBase* makePetScene(uint8_t species, WolfGame* game);
+  const PaStage* const* petArtOf(uint8_t species);        // that pet's pictures (0 for the butterfly: insects cannot be mixed)
 #endif
 #ifdef PET_NS
   #define PET_NS_OPEN namespace PET_NS {
@@ -102,6 +105,8 @@ int wolfDrawSprite(DisplayDriver& d, uint32_t genome, uint8_t stage, int x, int 
 class WolfScene {
 public:
   explicit WolfScene(WolfGame* game);
+  ~WolfScene();
+  void setHead(uint8_t head_species);          // mixed species: this pet's head on our body (255 = our own)
 
   enum { EV_COUNT = 19 };
   uint8_t debugMode() const { return _w.mode; }
@@ -151,6 +156,8 @@ private:
   Ev        _ev;
   Hole      _hole;
   uint8_t   _last_ev, _force, _stage;
+  const void* _art;              // the pictures in use (ours, or a mixed set)
+  void*     _chi;                // the mixed set, when there is one (a PaChimera)
   bool      _was_egg;
   uint32_t  _hatch_t0;
   int       _rw;

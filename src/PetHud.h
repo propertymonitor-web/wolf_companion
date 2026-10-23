@@ -6,7 +6,8 @@
 #include <stdio.h>
 
 inline void petHudText(DisplayDriver& d, const WolfGame& g, const Wolf& w, int right_limit_px, char* out, size_t cap) {
-  uint8_t sp = WolfGame::speciesOf(w);
+  char title[16];
+  WolfGame::titleOf(w, title, sizeof(title));
   char head[24];
   if (WolfGame::isEgg(w)) snprintf(head, sizeof(head), "EGG %uh", (unsigned)((WolfGame::eggLeftSecs(w) + 3599) / 3600));
   else snprintf(head, sizeof(head), "%s%umo", w.sex ? "F" : "M", (unsigned)WolfGame::ageMonths(w));
@@ -14,7 +15,8 @@ inline void petHudText(DisplayDriver& d, const WolfGame& g, const Wolf& w, int r
   char idx[12] = "";
   if (!WolfGame::isEgg(w) && g.count > 1) snprintf(idx, sizeof(idx), " %u/%u", (unsigned)(g.current + 1), (unsigned)g.count);
   const bool egg = WolfGame::isEgg(w);
-  const char* kinds[3] = { egg ? "" : petTitleOf(sp), egg ? "" : petShortOf(sp), "" };
+  const char* shortk = (WolfGame::headOf(w) == 0xFF) ? petShortOf(WolfGame::speciesOf(w)) : title;     // (a mixed species' name is short already)
+  const char* kinds[3] = { egg ? "" : title, egg ? "" : shortk, "" };
   // try, in order: everything / short kind name / no pet index / no kind
   struct Try { int kind; bool index; };
   static const Try order[] = { {0, true}, {0, false}, {1, true}, {1, false}, {2, true}, {2, false} };

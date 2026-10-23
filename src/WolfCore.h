@@ -14,6 +14,7 @@
 #define WOLF_GESTATION_MONTHS    2         // ~63 days -> about 7 hours
 #define WOLF_COOLDOWN_MONTHS     12        // mother can't mate again for 12 wolf-months (~4 h)
 #define WOLF_HYBRID_PCT          20        // (secret) of those matings between two different kinds that CAN have young
+#define WOLF_CHIMERA_PCT         12        // (secret) the same for pairs that make a brand-new mixed species
 #define WOLF_MATE_CHANCE_PCT     60        // chance of mating once BOTH wolves have given consent
 
 // "Digital consent": every wolf rolls its own number of visits it needs from a given wolf before
@@ -127,6 +128,7 @@ struct WolfVisitor {        // a wolf from another radio that is on OUR screen
   uint8_t  sex;
   uint16_t months;
   uint8_t  species;         // what kind of pet it is (PET_ID numbering)
+  uint8_t  kind;            // its kind code (see WolfGame::kindCode)
   uint8_t  owner[4];
   uint32_t until_ms, last_heard_ms, next_ping_ms;
   int8_t   enter_dir;       // +1 = walks in from the left edge, -1 = from the right edge
@@ -198,9 +200,21 @@ public:
 #endif
   // give the pet at `idx` a name (blank clears it); letters, digits, space and . - _ ' ! ? only, 7 characters at most
   bool            setName(uint8_t idx, const char* text);
-  static uint8_t  speciesOf(const Wolf& w) { return w.kind ? (uint8_t)(w.kind - 1) : (uint8_t)WOLF_MY_SPECIES; }
-  static bool     canPair(uint8_t a, uint8_t b);
-  int             youngKind(uint8_t mine, uint8_t theirs);
+  // `kind` (see Wolf): 0 = the species of this firmware, 1..15 = species + 1, 16..240 = a mixed species (body * 15 + head + 16)
+  static uint8_t  speciesOf(const Wolf& w) {          // whose body (and packet family) the pet has
+    if (w.kind == 0) return (uint8_t)WOLF_MY_SPECIES;
+    return w.kind <= WOLF_SPECIES_COUNT ? (uint8_t)(w.kind - 1) : (uint8_t)((w.kind - 16) / WOLF_SPECIES_COUNT);
+  }
+  static uint8_t  headOf(const Wolf& w) {              // whose head it has, 0xFF if it is not a mixed species
+    return w.kind > WOLF_SPECIES_COUNT ? (uint8_t)((w.kind - 16) % WOLF_SPECIES_COUNT) : (uint8_t)0xFF;
+  }
+  static uint8_t  kindCode(const Wolf& w) { return w.kind ? w.kind : (uint8_t)(WOLF_MY_SPECIES + 1); }
+  static uint8_t  chimeraKind(uint8_t body, uint8_t head) { return (uint8_t)(16 + body * WOLF_SPECIES_COUNT + head); }
+  static bool     chimeraOk(uint8_t body, uint8_t head) { return body != head && body < WOLF_SPECIES_COUNT && head < WOLF_SPECIES_COUNT && body != 4 && head != 4; }   // 4 = butterfly: insects cannot be mixed
+  static bool     kindValid(uint8_t k) { return k <= WOLF_SPECIES_COUNT || (k >= 16 && k <= 16 + WOLF_SPECIES_COUNT * WOLF_SPECIES_COUNT - 1 && chimeraOk((uint8_t)((k - 16) / WOLF_SPECIES_COUNT), (uint8_t)((k - 16) % WOLF_SPECIES_COUNT))); }
+  static void     titleOf(const Wolf& w, char* out, size_t cap);   // "Wolf", or for a mixed species a made-up name like "Wolbear"
+  static bool     canPair(uint8_t kind_a, uint8_t kind_b);        // by kind code (see kindCode)
+  int             youngKind(uint8_t mother_kind, uint8_t father_kind);   // child kind (0 = the mother's own), or -1 for no young
   static bool     related(uint32_t g1, uint32_t s1, uint32_t d1, uint32_t g2, uint32_t s2, uint32_t d2);
   uint32_t mixGenome(uint32_t mother, uint32_t father);
   void     cycleWolf();
@@ -230,7 +244,7 @@ private:
   struct Outbox { bool used; uint32_t due_ms; uint8_t pkt[40]; int len; } _out[4];
   void queue(const uint8_t* pkt, int len, uint32_t due_ms);
   bool _dirty;
-  uint8_t _pkt_sp, _rx_sp;      // species used for the packet being built / species of the packet being handled
+  uint8_t _pkt_sp, _rx_sp, _rx_kind;      // species used for the packet being built / species of the packet being handled
 
   uint32_t rnd(uint32_t lo, uint32_t hi);          // inclusive
   uint8_t  rollNeed() { return (uint8_t)rnd(WOLF_CONSENT_MIN, WOLF_CONSENT_MAX); }

@@ -99,7 +99,7 @@ size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
   return g_wolf_instance ? g_wolf_instance->mirrorLine(now, out, cap, batt_mv) : 0;
 }
 
-WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL) {
+WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL), _scene_head(0xFF) {
 #if PET_MYST
   _scene_sp = 0;
 #endif
@@ -119,6 +119,8 @@ void WolfModule::begin(UITask* ui) {
 #if PET_MYST
   _scene_sp = WolfGame::speciesOf(_game->pack[_game->current < _game->count ? _game->current : 0]);
   _scene = makePetScene(_scene_sp, _game);
+  _scene_head = WolfGame::headOf(_game->pack[_game->current < _game->count ? _game->current : 0]);
+  if (_scene) _scene->setHead(_scene_head);
 #else
   _scene = new WolfScene(_game);
 #endif
@@ -145,7 +147,10 @@ void WolfModule::syncScene() {
     delete _scene;
     _scene = makePetScene(sp, _game);
     _scene_sp = sp;
+    _scene_head = 0xFE;   // force head refresh
   }
+  uint8_t hd = WolfGame::headOf(_game->pack[_game->current < _game->count ? _game->current : 0]);
+  if (_scene && hd != _scene_head) { _scene->setHead(hd); _scene_head = hd; }
 #endif
 }
 
@@ -185,7 +190,13 @@ size_t WolfModule::mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt
   _scene->render(m->disp, now, batt_mv);
   const Wolf& w = _game->pack[_game->current];
 #if PET_MYST
-  const char* nm = WolfGame::isEgg(w) ? "egg" : petNameOf(WolfGame::speciesOf(w));
+  char nmbuf[16];
+  const char* nm = "egg";
+  if (!WolfGame::isEgg(w)) {
+    WolfGame::titleOf(w, nmbuf, sizeof(nmbuf));
+    for (char* c = nmbuf; *c; c++) if (*c >= 'A' && *c <= 'Z') *c += 32;      // the dashboard writes it with a capital itself
+    nm = nmbuf;
+  }
 #else
   const char* nm = PET_NAME;
 #endif

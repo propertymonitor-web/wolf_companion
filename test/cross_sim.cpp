@@ -66,7 +66,7 @@ int main() {
     }
     bool same = sp == mine;
 #if PET_MYST
-    bool maybe = same || petHybrid(mine, sp) != 0xFF;
+    bool maybe = same || petHybrid(mine, sp) != 0xFF || WolfGame::chimeraOk(mine, sp);
 #else
     bool maybe = same;
 #endif
@@ -86,6 +86,26 @@ int main() {
     CHECK(a != b ? true : petHybrid(a, b) == 0xFF, "a kind never hybridises with itself");
   }
   printf("  %d hybrid pairs\n", pairs);
+  {
+    int made = 0, tried = 0;
+    for (uint8_t body = 0; body < WOLF_SPECIES_COUNT; body++) for (uint8_t head = 0; head < WOLF_SPECIES_COUNT; head++) {
+      if (!WolfGame::chimeraOk(body, head) || petHybrid(body, head) != 0xFF || body == 14) continue;   // horse is not in the egg pool
+      uint32_t t2 = 0; for (uint32_t t = 1;; t++) if (petPickSpecies(t * 2654435761u) == body) { t2 = t * 2654435761u; break; }
+      Home hm(t2);
+      uint32_t mate = 0xC0DE0000u + head;
+      tried++;
+      for (int i = 0; i < 600; i++, now += 600000) {
+        hm.ready(mate); visit(hm, head, mate, now);
+        if (hm.g.pack[0].preg_secs_left) {
+          uint8_t k = hm.g.pack[0].child_kind;
+          CHECK(k >= 16 && WolfGame::kindValid(k), "chimera kind %d valid", k);
+          CHECK(k == WolfGame::chimeraKind(body, head), "kind code");
+          made++; break;
+        }
+      }
+    }
+    CHECK(made == tried && tried > 100, "every mixable pair can make a new species (%d of %d)", made, tried);
+  }
   for (int pair = 0; pair < 14 * WOLF_SPECIES_COUNT; pair++) {
     uint8_t hh = (uint8_t)(pair / WOLF_SPECIES_COUNT), other = (uint8_t)(pair % WOLF_SPECIES_COUNT);
     // find an identity of the right kind of mystery pet
