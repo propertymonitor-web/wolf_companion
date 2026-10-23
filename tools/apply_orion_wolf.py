@@ -155,11 +155,11 @@ patch(os.path.join(ui, "UITask.h"), [
 print("MyMesh.cpp (dashboard: watch the pet on a big screen)")
 patch(os.path.join(a.meshcore, "examples", "companion_radio", "MyMesh.cpp"), [
     ("pet decl", "void MyMesh::novaTick(uint32_t nv_now) {\n",
-     "size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv);   // WolfModule.cpp\n\nvoid MyMesh::novaTick(uint32_t nv_now) {\n"),
+     "size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv);   // WolfModule.cpp\nbool wolfSetPetName(const char* text, char* reply, int reply_len);              // WolfModule.cpp\n\nvoid MyMesh::novaTick(uint32_t nv_now) {\n"),
     ("pet state", "  static uint32_t nv_next_json = 0;\n",
      "  static uint32_t nv_next_json = 0;\n  static uint32_t nv_pet_until = 0, nv_pet_next = 0;   // the pet picture stream, while a page asks for it\n"),
     ("pet command", "    if (strncmp(nv_line + 4, \" json\", 5) == 0)",
-     "    if (strncmp(nv_line + 4, \" pet\", 4) == 0 && (nv_line[8] == 0 || nv_line[8] == ' ')) { nv_pet_until = nv_now + 4000u; continue; }\n    if (strncmp(nv_line + 4, \" json\", 5) == 0)"),
+     "    if (strncmp(nv_line + 4, \" petname\", 8) == 0 && (nv_line[12] == 0 || nv_line[12] == ' ')) { char nv_pr[96]; wolfSetPetName(nv_line + 12, nv_pr, sizeof(nv_pr)); Serial.print(\"# \"); Serial.println(nv_pr); continue; }\n    if (strncmp(nv_line + 4, \" pet\", 4) == 0 && (nv_line[8] == 0 || nv_line[8] == ' ')) { nv_pet_until = nv_now + 4000u; continue; }\n    if (strncmp(nv_line + 4, \" json\", 5) == 0)"),
     ("pet stream", "  static bool nv_was_on = false;\n",
      """  if ((int32_t)(nv_pet_until - nv_now) > 0 && (int32_t)(nv_now - nv_pet_next) >= 0) {   // eight pictures a second
     nv_pet_next = nv_now + 125u;

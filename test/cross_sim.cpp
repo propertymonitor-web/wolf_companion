@@ -127,13 +127,40 @@ int main() {
     // an old (version 2) file must still load, with every pet the household's own kind
     std::vector<uint8_t> v2; v2.assign(h.saved.begin(), h.saved.begin() + 6); v2[3] = 2;
     const uint8_t* p = h.saved.data() + 6;
-    for (int i = 0; i < g.count; i++) { v2.insert(v2.end(), p, p + 36); p += 38; }
+    for (int i = 0; i < g.count; i++) { v2.insert(v2.end(), p, p + 36); p += 46; }
     v2.insert(v2.end(), p, (const uint8_t*)(h.saved.data() + h.saved.size()));
     MockHost h3(11, t3, 1); h3.saved = v2; h3.backup.clear(); WolfGame g3(&h3); g3.begin(0);
     CHECK(g3.count == 2 && g3.pack[0].genome == g.pack[0].genome && g3.pack[1].genome == 0xCAFE0001, "old save files still load");
     CHECK(g3.pack[1].kind == 0 && WolfGame::speciesOf(g3.pack[1]) == g_mystery_sp, "old pets keep the household's kind");
   }
 #endif
+  printf("== names ==\n");
+  {
+    MockHost h(21, 0x00C0FFEEu, 1); WolfGame g(&h); g.begin(0);
+    Wolf c; memset(&c, 0, sizeof(c)); c.genome = 0xBEEF0002; c.visits_needed = 4; g.pack[g.count++] = c;
+    struct { const char* in; const char* want; } T[] = {
+      {"Rex", "Rex"}, {"  Rex  ", "Rex"}, {"Wolfgang", "Wolfgan"}, {"Mr Fluff", "Mr Fluf"}, {"a\"b\\c", "abc"}, {"", ""}, {"   ", ""},
+      {"Sir <b>", "Sir b"}, {"Ro-ro_1.", "Ro-ro_1"}, {"Zoe!?", "Zoe!?"}, {"\x01\x02ok", "ok"} };
+    for (auto& t : T) { g.setName(0, t.in); CHECK(!strcmp(g.pack[0].name, t.want), "name '%s' -> '%s' (wanted '%s')", t.in, g.pack[0].name, t.want); }
+    CHECK(!g.setName(9, "x"), "no such pet");
+    g.setName(0, "Rex"); g.setName(1, "Pup");
+    g.save();
+    MockHost h2(22, 0x00C0FFEEu, 1); h2.saved = h.saved; WolfGame g2(&h2); g2.begin(0);
+    CHECK(g2.count == 2 && !strcmp(g2.pack[0].name, "Rex") && !strcmp(g2.pack[1].name, "Pup"), "names are saved");
+    // a version 3 and a version 2 file (no names) still load and leave the names empty
+    for (int ver = 3; ver >= 2; ver--) {
+      std::vector<uint8_t> old(h.saved.begin(), h.saved.begin() + 6); old[3] = (uint8_t)ver;
+      const uint8_t* q = h.saved.data() + 6;
+      for (int i = 0; i < g.count; i++) { old.insert(old.end(), q, q + (ver == 3 ? 38 : 36)); q += 46; }
+      old.insert(old.end(), q, (const uint8_t*)(h.saved.data() + h.saved.size()));
+      MockHost h3(23, 0x00C0FFEEu, 1); h3.saved = old; h3.backup.clear(); WolfGame g3(&h3); g3.begin(0);
+      CHECK(g3.count == 2 && g3.pack[1].genome == 0xBEEF0002 && g3.pack[0].name[0] == 0, "version %d files still load", ver);
+    }
+    // a damaged name in the file is cleaned up, not trusted
+    std::vector<uint8_t> bad = h.saved; bad[6 + 36 + 2] = '"'; bad[6 + 36 + 3] = 'x';
+    MockHost h4(24, 0x00C0FFEEu, 1); h4.saved = bad; h4.backup.clear(); WolfGame g4(&h4); g4.begin(0);
+    CHECK(g4.count == 2 && g4.pack[0].name[0] == 0, "a name with a quote in it is dropped");
+  }
   printf(fails ? "SOME CHECKS FAILED\n" : "all checks passed\n");
   return fails ? 1 : 0;
 }

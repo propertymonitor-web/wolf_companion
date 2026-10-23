@@ -53,6 +53,8 @@ uint8_t petHiddenFrom(uint8_t sp);
 uint8_t petHiddenTo(uint8_t sp);
 const char* petNameOf(uint8_t sp);
 uint8_t petSpeciesFromPkt(uint8_t type, uint8_t ver);   // 0xFF = not one of ours
+const char* petTitleOf(uint8_t sp);                      // "Wolf", "Alligator" ... for the screen
+const char* petShortOf(uint8_t sp);                      // the same squeezed to 5 letters or fewer
 #if PET_MYST
   // mystery egg: the packet family follows the pet inside (and each pet of a mixed family), so a hatched fox
   // still visits ordinary fox radios
@@ -101,6 +103,7 @@ struct Wolf {
   uint16_t pups_sired;
   uint8_t  kind;            // species + 1 (0 = the species of this firmware); only the mystery build mixes species
   uint8_t  child_kind;      // species + 1 of the young being carried (0 = the mother's own)
+  char     name[8];         // the owner's name for this pet (up to 7 characters), empty = none
 };
 
 // Who has this device's wolves met?  (my wolf, their wolf) -> number of visits.
@@ -193,6 +196,8 @@ public:
 #else
   static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return isEgg(w) || (m >= PET_HIDDEN_FROM && m < PET_HIDDEN_TO); }   // an egg or a chrysalis stays put
 #endif
+  // give the pet at `idx` a name (blank clears it); letters, digits, space and . - _ ' ! ? only, 7 characters at most
+  bool            setName(uint8_t idx, const char* text);
   static uint8_t  speciesOf(const Wolf& w) { return w.kind ? (uint8_t)(w.kind - 1) : (uint8_t)WOLF_MY_SPECIES; }
   static bool     canPair(uint8_t a, uint8_t b);
   int             youngKind(uint8_t mine, uint8_t theirs);

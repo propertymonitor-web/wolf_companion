@@ -91,6 +91,10 @@ static WolfModule* g_wolf_instance = NULL;
 struct MirrorState { PetMirror disp; PetMirrorEncoder enc; };
 
 // called from the dashboard link in MyMesh.cpp (see apply_orion_wolf.py)
+bool wolfSetPetName(const char* text, char* reply, int reply_len) {
+  if (!g_wolf_instance) { snprintf(reply, reply_len, "Err - no pet on this radio"); return false; }
+  return g_wolf_instance->setPetName(text, reply, reply_len);
+}
 size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
   return g_wolf_instance ? g_wolf_instance->mirrorLine(now, out, cap, batt_mv) : 0;
 }
@@ -156,6 +160,18 @@ void WolfModule::nextWolf(char* desc, int desc_len) {
   _game->describe(_game->pack[_game->current], desc, desc_len);
 }
 
+bool WolfModule::setPetName(const char* text, char* reply, int reply_len) {
+  if (!_game || !_game->count) { snprintf(reply, reply_len, "Err - no pet yet"); return false; }
+  while (text && *text == ' ') text++;
+  if (text && text[0] == '-' && text[1] == 0) text = "";        // "-" clears the name
+  _game->setName(_game->current, text);
+  const Wolf& w = _game->pack[_game->current];
+  if (w.name[0]) snprintf(reply, reply_len, "OK - your pet is called %s", w.name);
+  else snprintf(reply, reply_len, "OK - the name is cleared");
+  _game->save();
+  return true;
+}
+
 void WolfModule::save() {
   if (_game) _game->save();
 }
@@ -173,5 +189,5 @@ size_t WolfModule::mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt
 #else
   const char* nm = PET_NAME;
 #endif
-  return m->enc.line(m->disp.fb, now, out, cap, nm, w.sex, (int)WolfGame::ageMonths(w), _game->count, _game->current + 1);
+  return m->enc.line(m->disp.fb, now, out, cap, nm, w.sex, (int)WolfGame::ageMonths(w), _game->count, _game->current + 1, w.name);
 }

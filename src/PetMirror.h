@@ -118,7 +118,7 @@ struct PetMirrorEncoder {
   }
 
   // meta fields only go out on key frames
-  size_t line(const uint8_t* fb, uint32_t now, char* out, size_t cap, const char* name, int sex, int months, int count, int index) {
+  size_t line(const uint8_t* fb, uint32_t now, char* out, size_t cap, const char* name, int sex, int months, int count, int index, const char* uname = "") {
     if (cap < 2000) return 0;
     bool key = frames_since_key >= 40 || (uint32_t)(now - last_call) > 1500;     // first frame, every ~5 s, or after a pause
     last_call = now;
@@ -133,7 +133,7 @@ struct PetMirrorEncoder {
       rle[n++] = 0; rle[n++] = (uint8_t)run;
     }
     int w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":%d,", (unsigned long)(++seq), key ? 1 : 0);
-    if (key) w += snprintf(out + w, cap - w, "\"n\":\"%s\",\"x\":%d,\"m\":%d,\"c\":%d,\"i\":%d,", name, sex, months, count, index);
+    if (key) w += snprintf(out + w, cap - w, "\"n\":\"%s\",\"u\":\"%s\",\"x\":%d,\"m\":%d,\"c\":%d,\"i\":%d,", name, uname ? uname : "", sex, months, count, index);
     w += snprintf(out + w, cap - w, "\"d\":\"");
     w += (int)b64(rle, n, out + w);
     w += snprintf(out + w, cap - w, "\"}}");

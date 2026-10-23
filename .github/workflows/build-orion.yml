@@ -76,6 +76,8 @@ jobs:
             ./mystery_sim | tail -3
             g++ -std=c++17 -I src -I mc/src -I test -DPET_MYSTERY=1 test/cross_sim.cpp src/WolfCore.cpp -o cross_sim
             ./cross_sim | grep -v "\[alert\]" | tail -8
+            g++ -std=c++17 -I src -I mc/src -I test test/hud_sim.cpp src/WolfCore.cpp -o hud_sim
+            ./hud_sim | tail -3
           else
             g++ -std=c++17 -I src -I mc/src -I test -DPET_$SP=1 test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp src/WolfInsect.cpp -o host_sim
             ./host_sim logic | grep -v "\[alert\]"

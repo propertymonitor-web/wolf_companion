@@ -20,6 +20,7 @@ public:
   int  render(DisplayDriver& d, uint16_t batt_mv);   // draw the wolf screen; returns ms to next frame
   void nextWolf(char* desc, int desc_len);      // long press on the wolf screen: show the next wolf
   void save();
+  bool setPetName(const char* text, char* reply, int reply_len);   // name the pet on screen (blank clears)
   size_t mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv);   // one dashboard line (0 = nothing to send)
 
 private:

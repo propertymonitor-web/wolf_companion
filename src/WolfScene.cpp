@@ -2,6 +2,7 @@
 #if !PET_INSECT && !(PET_MYST && !defined(PET_NS))
 #include "PetSpecies.h"
 #include "WolfProps.h"
+#include "PetHud.h"
 #include "PetEgg.h"
 
 // which prop plays the "visitor" and the "flyer" for this pet (see PetSpecies.h)
@@ -1219,14 +1220,9 @@ void WolfScene::updateVisitor(uint32_t now, uint32_t dt, int rw, int vw) {
 void WolfScene::drawHud(DisplayDriver& d, const Wolf& w, uint16_t batt_mv) {
   d.setTextSize(1);
   d.setColor(UIColor::primary_txt);
-  char tmp[24];
-  if (WolfGame::isEgg(w))
-    snprintf(tmp, sizeof(tmp), "EGG %uh", (unsigned)((WolfGame::eggLeftSecs(w) + 3599) / 3600));
-  else if (g->count > 1)
-    snprintf(tmp, sizeof(tmp), "%s %umo %u/%u", w.sex ? "F" : "M", (unsigned)WolfGame::ageMonths(w),
-             (unsigned)(g->current + 1), (unsigned)g->count);
-  else
-    snprintf(tmp, sizeof(tmp), "%s %umo", w.sex ? "F" : "M", (unsigned)WolfGame::ageMonths(w));
+  char tmp[40];
+  const int hud_limit = SCREEN_W - 16 - 3 - (w.preg_secs_left ? 12 : 0);      // the battery symbol (and the heart) take the right side
+  petHudText(d, *g, w, hud_limit, tmp, sizeof(tmp));
   d.setCursor(0, 0);
   d.print(tmp);
   int tw = d.getTextWidth(tmp);

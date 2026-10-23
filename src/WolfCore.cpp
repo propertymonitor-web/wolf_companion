@@ -1,11 +1,7 @@
 #include "WolfCore.h"
 #include <stdio.h>
 
-#if PET_MYST
-#define WOLF_FILE_VER 3          // the mystery build also saves each pet's species; files of version 2 still load
-#else
-#define WOLF_FILE_VER 2
-#endif
+#define WOLF_FILE_VER 4          // 4 = also a name and (mystery build) a species per pet; versions 2 and 3 still load
 #define WOLF_STATE_MAX 640
 
 // species table, indexed by PET_ID.  (type, version) are the same as the single-pet firmware of that species,
@@ -22,6 +18,12 @@ uint8_t petPktVer(uint8_t sp) { return petRow(sp).ver; }
 uint8_t petHiddenFrom(uint8_t sp) { return petRow(sp).hfrom; }
 uint8_t petHiddenTo(uint8_t sp) { return petRow(sp).hto; }
 const char* petNameOf(uint8_t sp) { return petRow(sp).name; }
+static const char* const kTitle[WOLF_SPECIES_COUNT] = { "Wolf", "Fox", "Cat", "Bear", "Butterfly", "Alligator", "Crocodile", "Pig", "Donkey",
+  "Unicorn", "Dragon", "Kitsune", "Griffin", "Phoenix", "Horse" };
+static const char* const kShort[WOLF_SPECIES_COUNT] = { "Wolf", "Fox", "Cat", "Bear", "Bfly", "Gator", "Croc", "Pig", "Donk",
+  "Unic", "Drgn", "Kits", "Grif", "Phnx", "Horse" };
+const char* petTitleOf(uint8_t sp) { return kTitle[sp < WOLF_SPECIES_COUNT ? sp : 0]; }
+const char* petShortOf(uint8_t sp) { return kShort[sp < WOLF_SPECIES_COUNT ? sp : 0]; }
 uint8_t petSpeciesFromPkt(uint8_t type, uint8_t ver) {
   for (uint8_t i = 0; i < WOLF_SPECIES_COUNT; i++) if (kPets[i].type == type && kPets[i].ver == ver) return i;
   return 0xFF;
@@ -310,6 +312,25 @@ void WolfGame::giveBirth(Wolf& mother) {
     _h->alert(msg);
   }
   _dirty = true;
+}
+
+bool WolfGame::setName(uint8_t idx, const char* text) {
+  if (idx >= count) return false;
+  char out[8]; int n = 0;
+  if (text) {
+    for (const char* c = text; *c && n < 7; c++) {
+      char ch = *c;
+      bool ok = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '_' ||
+                ch == '\'' || ch == '!' || ch == '?';
+      if (ch == ' ') { if (n == 0) continue; ok = true; }          // no leading spaces
+      if (ok) out[n++] = ch;
+    }
+  }
+  while (n > 0 && out[n - 1] == ' ') n--;                           // none trailing
+  memset(pack[idx].name, 0, 8);
+  memcpy(pack[idx].name, out, n);
+  _dirty = true;
+  return true;
 }
 
 // may these two kinds of pet have young together?  Same kind always; different kinds only in the secret cases.
@@ -665,7 +686,7 @@ static uint16_t get16(const uint8_t*& p) { uint16_t v; memcpy(&v, p, 2); p += 2;
 int WolfGame::serialize(uint8_t* buf, int maxlen) const {
   uint8_t nmem = 0;
   for (int i = 0; i < WOLF_MEM_SIZE; i++) if (mem[i].visits) nmem++;
-  const int rec = WOLF_FILE_VER >= 3 ? 38 : 36;
+  const int rec = 46;
   int need = 6 + count * rec + 1 + nmem * 9;
   if (maxlen < need) return -1;
   uint8_t* p = buf;
@@ -678,7 +699,8 @@ int WolfGame::serialize(uint8_t* buf, int maxlen) const {
     put32(p, w.preg_secs_left); put32(p, w.father_genome); put32(p, w.cooldown_secs);
     put32(p, w.sire); put32(p, w.dam);
     put16(p, w.pups_born); put16(p, w.pups_sired);
-    if (WOLF_FILE_VER >= 3) { *p++ = w.kind; *p++ = w.child_kind; }
+    *p++ = w.kind; *p++ = w.child_kind;
+    memcpy(p, w.name, 8); p += 8;
   }
   *p++ = nmem;
   for (int i = 0; i < WOLF_MEM_SIZE; i++) {
@@ -691,8 +713,8 @@ int WolfGame::serialize(uint8_t* buf, int maxlen) const {
 bool WolfGame::deserialize(const uint8_t* buf, int len) {
   if (len < 7 || buf[0] != 'W' || buf[1] != 'L' || buf[2] != 'F') return false;
   const uint8_t ver = buf[3];
-  if (ver != 2 && !(ver == 3 && WOLF_FILE_VER == 3)) return false;
-  const int rec = ver >= 3 ? 38 : 36;
+  if (ver < 2 || ver > WOLF_FILE_VER) return false;
+  const int rec = ver >= 4 ? 46 : (ver == 3 ? 38 : 36);
   uint8_t n = buf[4], cur = buf[5];
   if (n == 0 || n > WOLF_MAX_PACK || len < 6 + n * rec + 1) return false;
   const uint8_t* p = buf + 6;
@@ -710,6 +732,11 @@ bool WolfGame::deserialize(const uint8_t* buf, int len) {
       w.kind = *p++; w.child_kind = *p++;
       if (w.kind > WOLF_SPECIES_COUNT) w.kind = 0;
       if (w.child_kind > WOLF_SPECIES_COUNT) w.child_kind = 0;
+    }
+    if (ver >= 4) {
+      memcpy(w.name, p, 8); p += 8;
+      w.name[7] = 0;
+      for (int k = 0; w.name[k]; k++) if ((uint8_t)w.name[k] < 0x20 || (uint8_t)w.name[k] > 0x7E || w.name[k] == '"' || w.name[k] == '\\') { w.name[k] = 0; break; }
     }
   }
   uint8_t nmem = *p++;
