@@ -4,6 +4,29 @@
 #define WOLF_FILE_VER 2
 #define WOLF_STATE_MAX 640
 
+#if PET_MYST
+uint8_t g_mystery_sp = 0;
+// species table, indexed by PET_ID.  (type, version) are the same as the single-pet firmware of that species,
+// so a hatched mystery pet and an ordinary one are friends.
+struct PetRow { const char* name; uint8_t type, ver, hfrom, hto; };
+static const PetRow kPets[14] = {
+  { "wolf", 0xA0, 2, 0, 0 }, { "fox", 0xB0, 2, 0, 0 }, { "cat", 0xC0, 2, 0, 0 }, { "bear", 0xD0, 2, 0, 0 },
+  { "butterfly", 0xE0, 2, 6, 9 }, { "alligator", 0xF0, 2, 0, 0 }, { "crocodile", 0xF0, 3, 0, 0 }, { "pig", 0xF0, 4, 0, 0 },
+  { "donkey", 0xF0, 5, 0, 0 }, { "unicorn", 0xF0, 6, 0, 0 }, { "dragon", 0xF0, 7, 0, 0 }, { "kitsune", 0xF0, 8, 0, 0 },
+  { "griffin", 0xF0, 9, 0, 0 }, { "phoenix", 0xF0, 10, 0, 0 } };
+static const PetRow& petRow(uint8_t sp) { return kPets[sp < 14 ? sp : 0]; }
+uint8_t petPktType(uint8_t sp) { return petRow(sp).type; }
+uint8_t petPktVer(uint8_t sp) { return petRow(sp).ver; }
+uint8_t petHiddenFrom(uint8_t sp) { return petRow(sp).hfrom; }
+uint8_t petHiddenTo(uint8_t sp) { return petRow(sp).hto; }
+const char* petNameOf(uint8_t sp) { return petRow(sp).name; }
+// which pet is inside the egg: a well-mixed hash of the radio's identity, so it is the same after every reboot
+uint8_t petPickSpecies(uint32_t id) {
+  uint32_t x = id ^ 0xA5F152C3u; x ^= x >> 16; x *= 0x45D9F3Bu; x ^= x >> 16; x *= 0x45D9F3Bu; x ^= x >> 16;
+  return (uint8_t)(x % 14u);
+}
+#endif
+
 static inline uint32_t nib(uint32_t g, int i) { return (g >> (4 * i)) & 0xF; }
 static inline bool due(uint32_t now, uint32_t t) { return (int32_t)(now - t) >= 0; }
 
@@ -107,6 +130,9 @@ void WolfGame::createFounder() {
 }
 
 void WolfGame::begin(uint32_t now_ms) {
+#if PET_MYST
+  g_mystery_sp = petPickSpecies(_h->identityTail());
+#endif
   _last_ms = now_ms;
   _ms_acc = 0;
   uint8_t buf[WOLF_STATE_MAX];
@@ -136,6 +162,10 @@ void WolfGame::ageOneSecond() {
   for (uint8_t i = 0; i < n; i++) {
     Wolf& w = pack[i];
     w.age_secs++;
+    if (w.age_secs == eggSecs(w.genome) && w.age_secs) {   // the egg hatches
+      _h->alert("The egg hatched!");
+      _dirty = true;
+    }
     if (w.cooldown_secs) w.cooldown_secs--;
     if (w.preg_secs_left) {
       if (--w.preg_secs_left == 0) giveBirth(w);

@@ -1,8 +1,8 @@
 #include "WolfScene.h"
-#if !PET_INSECT
+#if !PET_INSECT && !(PET_MYST && !defined(PET_NS))
 #include "PetSpecies.h"
-#include PET_ART
 #include "WolfProps.h"
+#include "PetEgg.h"
 
 // which prop plays the "visitor" and the "flyer" for this pet (see PetSpecies.h)
 #if PET_PREY == 1            // a mouse: small, quick, barely hops
@@ -76,10 +76,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+PET_NS_OPEN
+#include PET_ART
+
+#if PET_MYST
+  #define EGG_LOOK 3          // a mystery egg gives nothing away
+#else
+  #define EGG_LOOK PET_EGG_STYLE
+#endif
+
 #define SCREEN_W   128
 #define GROUND_Y   58      // row the paws stand on
-#define MAX_CW     64
-#define MAX_CH     56
+#define MAX_CW     72
+#define MAX_CH     60
 
 // ------------------------------------------------------------ small bitmaps --
 static const uint8_t bone_bits[]  = { 0xC1, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xC1, 0x80 };   // 9 x 4
@@ -173,6 +182,7 @@ int wolfDrawSprite(DisplayDriver& d, uint32_t genome, uint8_t stage, int x, int 
   if (stage > 2) stage = 2;
   const WolfStageArt& A = *wolf_art_stages[stage];
   const int cw = A.cw, ch = A.ch;
+  if (cw > MAX_CW || ch > MAX_CH) return cw;       // (cannot happen with the art we ship; keeps a bad art file from corrupting memory)
   WolfTraits t;
   WolfGame::traitsOf(genome, t);
 
@@ -295,7 +305,7 @@ WolfScene::WolfScene(WolfGame* game) : g(game), _init(false), _last_ms(0), _rng(
   memset(&_ev, 0, sizeof(_ev));
   memset(&_hole, 0, sizeof(_hole));
   memset(&_pool, 0, sizeof(_pool));
-  _last_ev = 255; _force = 0; _stage = STAGE_ADULT; _rw = 60;
+  _last_ev = 255; _force = 0; _stage = STAGE_ADULT; _rw = 60; _was_egg = false; _hatch_t0 = 0;
   _cp0[0] = _cp0[1] = 0;
 }
 
@@ -474,7 +484,7 @@ void WolfScene::update(uint32_t now, uint32_t dt, uint8_t stage, int rw, int vw)
 
 // ------------------------------------------------------- random activities --
 enum { EV_BUNNY, EV_BIRD, EV_FLY, EV_DIG, EV_SLEEP, EV_REST, EV_HOWL, EV_SHAKE, EV_YAWN, EV_CHASE,
-       EV_SNIFF, EV_STRETCH, EV_ZOOM, EV_POUNCE, EV_WALLOW, EV_SWIM, EV_SNAP };
+       EV_SNIFF, EV_STRETCH, EV_ZOOM, EV_POUNCE, EV_WALLOW, EV_SWIM, EV_SNAP, EV_FIRE, EV_MAGIC };
 
 static inline int arc(uint32_t t, uint32_t period, int height) {     // 0 -> height -> 0 over `period` ms
   if (t >= period) return 0;
@@ -498,7 +508,7 @@ uint8_t WolfScene::pickEvent(uint8_t stage) {
 
 void WolfScene::beginEvent(uint8_t kind, uint32_t now, uint8_t stage) {
   (void)stage;
-  static const uint16_t dur[EV_COUNT] = { 0, 0, 0, 4300, 0, 0, 3800, 1500, 2300, 3000, 4600, 2500, 3400, 0, 0, 0, 0 };
+  static const uint16_t dur[EV_COUNT] = { 0, 0, 0, 4300, 0, 0, 3800, 1500, 2300, 3000, 4600, 2500, 3400, 0, 0, 0, 0, 0, 0 };
   _last_ev = kind;
   uint32_t d = dur[kind];
   if (kind == EV_SLEEP) d = rnd(9000, 15000);
@@ -807,6 +817,28 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
       break;
     }
 
+    case M_FIRE: {                         // rear back, breathe fire (or burst into flame), smoulder
+      fixed = false;
+      switch (_ev.phase) {
+        case 0: _ev.phase = 1; _ev.pt0 = now; break;
+        case 1: if (now - _ev.pt0 > 800) { _ev.phase = 2; _ev.pt0 = now; _ev.show = true; } break;
+        case 2: if (now - _ev.pt0 > 2300) { _ev.phase = 3; _ev.pt0 = now; _ev.show = false; } break;
+        case 3: if (now - _ev.pt0 > 1300) startMode(M_HAPPY, now, 1400); break;
+      }
+      break;
+    }
+
+    case M_MAGIC: {                        // sparkles, foxfire or drifting feathers
+      fixed = false;
+      switch (_ev.phase) {
+        case 0: _ev.phase = 1; _ev.pt0 = now; break;
+        case 1: if (now - _ev.pt0 > 700) { _ev.phase = 2; _ev.pt0 = now; } break;
+        case 2: if (now - _ev.pt0 > 3000) { _ev.phase = 3; _ev.pt0 = now; } break;
+        case 3: if (now - _ev.pt0 > 900) startMode(M_HAPPY, now, 1400); break;
+      }
+      break;
+    }
+
     case M_STRETCH:
       if (now >= a.until) { startMode(rnd(0, 1) ? (uint8_t)M_YAWN : (uint8_t)M_IDLE, now, 2300); fixed = false; }
       break;
@@ -988,6 +1020,118 @@ void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
       }
       break;
     }
+    case M_FIRE: {
+      const WolfStageArt& SA = *wolf_art_stages[_stage];
+      if (_ev.phase == 2) {
+        uint32_t t = now - _ev.pt0;
+#if PET_FIRE == 1
+        // a phoenix bursts into flame: tongues of fire all round it, sparks rising
+        int x0 = wx + (rw * 28) / 100, x1 = wx + (rw * 88) / 100;
+        for (int c = x0; c < x1; c += 5) {
+          uint32_t hsh = (uint32_t)((c + 1) * 2654435761u) ^ (uint32_t)((now / 100) * 40503u);
+          int mid = (x0 + x1) / 2;
+          int th = (ch * 3) / 4 + (int)((hsh >> 7) % 9) - abs(c - mid) / 3;
+          if (t < 400) th = th * (int)t / 400;
+          for (int y = 0; y < th; y++) {
+            int w2 = (th - y > th * 6 / 10) ? 3 : ((th - y > th * 3 / 10) ? 2 : 1);
+            if ((((y + c) >> 1) + (int)(now / 120)) % 5 == 4) continue;
+            d.fillRect(c - w2 / 2, GROUND_Y - 1 - y, w2, 1);
+          }
+        }
+        for (int i = 0; i < 6; i++) {
+          uint32_t tt = (now + i * 211) % 900;
+          d.fillRect(wx + (int)((i * 29 + 7) % (uint32_t)(rw + 6)) - 3 + (int)(tt / 200 & 1), GROUND_Y - ch - (int)(tt / 60), 1, 1);
+        }
+#else
+        // a dragon breathes a cone of fire from its mouth
+        bool mir = a.dir < 0;
+        int mx = wx + (mir ? SA.cw - 1 - SA.key[0].nosex : SA.key[0].nosex) + (mir ? -1 : 1);
+        int my = GROUND_Y - (SA.ch - 1) + SA.key[0].nosey + 1;
+        int len = t < 450 ? (int)(36 * t / 450) : 36;
+        for (int i = 0; i < len; i++) {
+          int hh = 1 + (i * 3) / 14;
+          uint32_t hsh = (uint32_t)((i + 3) * 2246822519u) ^ (uint32_t)((now / 70) * 3266489917u);
+          int j = (int)((hsh >> 11) % 3) - 1;
+          int x = mx + (mir ? -i : i);
+          if (x < 0 || x >= SCREEN_W) continue;
+          for (int y = -hh; y <= hh; y++) {
+            if (i > 4 && abs(y) == hh && ((i + (int)(now / 90)) & 1)) continue;
+            if (i > 8 && ((x + y + (int)(now / 80)) & 1)) continue;
+            d.fillRect(x, my + y + j, 1, 1);
+          }
+        }
+#endif
+      } else if (_ev.phase == 3) {          // smoke curls up
+        bool mir = a.dir < 0;
+        int mx = wx + (mir ? SA.cw - 1 - SA.key[0].nosex : SA.key[0].nosex);
+        int my = GROUND_Y - (SA.ch - 1) + SA.key[0].nosey;
+        for (int i = 0; i < 3; i++) {
+          uint32_t tt = (now - _ev.pt0 + i * 330) % 1000;
+          int sx = mx + (mir ? -2 : 2) + (int)(tt / 220 & 1) - 1 + i * 2 * (mir ? -1 : 1);
+          int sy = my - (int)(tt / 70);
+          d.drawRect(sx, sy, 2, 2);
+        }
+      }
+      break;
+    }
+    case M_MAGIC: {
+      if (_ev.phase >= 1 && _ev.phase <= 3) {
+        uint32_t t = now - _ev.pt0;
+        int cxm = wx + rw / 2, cym = GROUND_Y - ch / 2 - 3;
+#if PET_MAGIC == 1
+        // kitsune: three foxfire wisps circling
+        for (int i = 0; i < 3; i++) {
+          float ang = (now / 520.0f) + i * 2.094f;
+          int rx = rw / 2 + 9, ry = ch / 2 + 4;
+          int fx = cxm + (int)(rx * cosf(ang)), fy = cym + (int)(ry * sinf(ang)) - 2;
+          for (int k = 3; k >= 1; k--) {            // a short trail
+            float a2 = ang - k * 0.22f;
+            d.fillRect(cxm + (int)(rx * cosf(a2)), cym + (int)(ry * sinf(a2)) - 1, 1, 1);
+          }
+          d.fillRect(fx, fy - 1, 1, 1);
+          d.fillRect(fx - 1, fy, 3, 1);
+          d.fillRect(fx - 1, fy + 1, 3, 1);
+          d.fillRect(fx, fy + 2, 1, 1);
+        }
+#elif PET_MAGIC == 2
+        // griffin: feathers drift down from above
+        for (int i = 0; i < 7; i++) {
+          uint32_t tt = (now + i * 397) % 2400;
+          int fx = wx + (int)((i * 41 + 5) % (uint32_t)(rw + 10)) - 5 + (int)(3 * sinf(tt / 260.0f + i));
+          int fy = GROUND_Y - ch - 6 + (int)(tt / 38);
+          if (fy > GROUND_Y) continue;
+          d.fillRect(fx, fy, 1, 1); d.fillRect(fx + 1, fy + 1, 1, 1); d.fillRect(fx + 2, fy + 2, 1, 1); d.fillRect(fx + 2, fy, 1, 1);
+        }
+#else
+        // unicorn: a rainbow and twinkling stars
+        int rbx = hx < 40 ? 40 : (hx > SCREEN_W - 40 ? SCREEN_W - 40 : hx);
+        int grow = t > 600 ? 100 : (int)(t * 100 / 600);
+        if (_ev.phase == 3) grow = 100 - (int)((now - _ev.pt0) * 100 / 900);
+        for (int band = 0; band < 3; band++) {
+          int r = 20 + band * 3;
+          for (int deg = 180; deg > 180 - (180 * grow) / 100; deg -= 3) {
+            float ra = deg * 0.017453f;
+            int px = rbx + (int)(r * cosf(ra)), py = GROUND_Y - 1 - (int)(r * sinf(ra) * 0.8f);
+            if (band == 1 && ((deg / 3) & 1)) continue;
+            if (band == 2 && ((deg / 3) % 3) == 0) continue;
+            if (px >= 0 && px < SCREEN_W && py >= 11) d.fillRect(px, py, 1, 1);
+          }
+        }
+        for (int i = 0; i < 6; i++) {
+          uint32_t hsh = (uint32_t)(i * 2654435761u) + 77u;
+          int sx = wx + (int)((hsh >> 5) % (uint32_t)(rw + 20)) - 10;
+          int sy = GROUND_Y - ch - 4 + (int)((hsh >> 14) % (uint32_t)(ch + 6));
+          int ph = (int)((now / 140 + i * 3) % 6);
+          if (ph == 0) continue;
+          if (sx < 2 || sx > SCREEN_W - 3 || sy < 11) continue;
+          d.fillRect(sx, sy, 1, 1);
+          if (ph >= 2 && ph <= 4) { d.fillRect(sx - 1, sy, 3, 1); d.fillRect(sx, sy - 1, 1, 3); }
+          if (ph == 3) { d.fillRect(sx - 2, sy, 5, 1); d.fillRect(sx, sy - 2, 1, 5); }
+        }
+#endif
+      }
+      break;
+    }
     case M_SNIFF: {
       if (((e / 900) % 3) == 2) {          // a questioning moment
         int qx = hx + (a.dir > 0 ? 6 : -10);
@@ -1064,7 +1208,9 @@ void WolfScene::drawHud(DisplayDriver& d, const Wolf& w, uint16_t batt_mv) {
   d.setTextSize(1);
   d.setColor(UIColor::primary_txt);
   char tmp[24];
-  if (g->count > 1)
+  if (WolfGame::isEgg(w))
+    snprintf(tmp, sizeof(tmp), "EGG %uh", (unsigned)((WolfGame::eggLeftSecs(w) + 3599) / 3600));
+  else if (g->count > 1)
     snprintf(tmp, sizeof(tmp), "%s %umo %u/%u", w.sex ? "F" : "M", (unsigned)WolfGame::ageMonths(w),
              (unsigned)(g->current + 1), (unsigned)g->count);
   else
@@ -1096,6 +1242,16 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   uint8_t stage = WolfGame::stageOf(w);
   const WolfStageArt& A = *wolf_art_stages[stage];
   int rw = A.cw;
+
+  if (WolfGame::isEgg(w)) {                       // not hatched yet: just the egg, rocking in its nest
+    _was_egg = true;
+    d.setColor(UIColor::primary_txt);
+    for (int x = 0; x < SCREEN_W; x += 2) d.fillRect(x, GROUND_Y + 1, 1, 1);
+    eggDraw(d, w, EGG_LOOK, now, GROUND_Y, SCREEN_W);
+    drawHud(d, w, batt_mv);
+    return 110;
+  }
+  if (_was_egg) { _was_egg = false; _hatch_t0 = now; _init = false; }
 
   if (!_init || g->current != _shown_idx || w.genome != _shown_genome) {
     _rng ^= w.genome + now;
@@ -1135,6 +1291,16 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
 
   // ground: a dotted line
   for (int x = 0; x < SCREEN_W; x += 2) d.fillRect(x, GROUND_Y + 1, 1, 1);
+
+  // the shell it hatched from stays on the ground for a while
+  if (_hatch_t0) {
+    uint32_t since = now - _hatch_t0;
+    if (since > 120000) _hatch_t0 = 0;
+    else {
+      eggShell(d, w, PET_EGG_STYLE, GROUND_Y, SCREEN_W, since);
+      if (since < 2000 && ((since / 250) & 1) == 0) d.drawTextCentered(SCREEN_W / 2, 12, "CRACK!");
+    }
+  }
 
   // treat
   if (_treat.active) d.drawXbm(_treat.x16 / 16, _treat.y16 / 16 - (TREAT_H - 4), TREAT_BM, TREAT_W, TREAT_H);
@@ -1237,6 +1403,26 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
         else if (_ev.phase == 2) { p.head = (t / 240) & 1 ? 2 : 3; p.blink = t > 800; }
         break;
       }
+      case M_FIRE: {
+        uint32_t t = now - _ev.pt0;
+#if PET_FIRE == 1
+        if (_ev.phase == 1) { p.head = 4; lift = (int)(t * 3 / 800); }
+        else if (_ev.phase == 2) { p.head = 4; lift = 3 + (((now / 140) & 1) ? 1 : 0); }
+        else if (_ev.phase == 3) { p.head = 4; lift = t < 400 ? 3 - (int)(t * 3 / 400) : 0; }
+#else
+        if (_ev.phase == 1) p.head = 4;
+        else if (_ev.phase == 2) { p.head = 0; p.blink = false; }
+        else if (_ev.phase == 3) { p.head = 4; p.blink = ((t / 300) & 1); }
+#endif
+        break;
+      }
+      case M_MAGIC: {
+        if (_ev.phase >= 1 && _ev.phase <= 2) p.head = 4;
+#if PET_MAGIC == 2
+        if (_ev.phase == 2) lift = arc((now - _ev.pt0) % 500, 500, 2);
+#endif
+        break;
+      }
       case M_BARK: {
         uint32_t e = now - _w.t0;
         if (e < 500) p.head = 2;
@@ -1274,4 +1460,5 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   return 110;   // ~9 frames per second
 }
 
+#include "PetFactory.inc"
 #endif   // !PET_INSECT

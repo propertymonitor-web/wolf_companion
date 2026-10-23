@@ -26,6 +26,10 @@ private:
   struct Host;                                  // WolfHost implementation (WolfModule.cpp)
   Host*      _host;
   WolfGame*  _game;
+#if PET_MYST
+  PetSceneBase* _scene;
+#else
   WolfScene* _scene;
+#endif
   void*      _mirror;               // PetMirror + encoder, created on first use
 };

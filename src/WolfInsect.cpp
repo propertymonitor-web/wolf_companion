@@ -1,12 +1,21 @@
 // WolfInsect: the butterfly's scene -- caterpillar, chrysalis, young and grown butterfly.
 #include "WolfScene.h"
-#if PET_INSECT
+#if PET_INSECT && !(PET_MYST && !defined(PET_NS))
 #include "PetSpecies.h"
-#include PET_ART
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "PetEgg.h"
+
+PET_NS_OPEN
+#include PET_ART
+
+#if PET_MYST
+  #define EGG_LOOK 3
+#else
+  #define EGG_LOOK PET_EGG_STYLE
+#endif
 
 #define SCREEN_W 128
 #define GROUND_Y 58
@@ -166,7 +175,7 @@ static void drawChrysalisSprite(DisplayDriver& d, uint32_t genome, int x, int y,
 
 // ------------------------------------------------------------------- scene --
 WolfScene::WolfScene(WolfGame* game) : g(game), _init(false), _last_ms(0), _rng(0x9E3779B9u), _shown_idx(0), _vphase(V_NONE),
-    _form(F_ADULT), _last_ev(255), _force(0), _shown_genome(0), _vseen_id(0), _trail_n(0) {
+    _form(F_ADULT), _last_ev(255), _force(0), _was_egg(false), _hatch_t0(0), _shown_genome(0), _vseen_id(0), _trail_n(0) {
   memset(&_w, 0, sizeof(_w));
   memset(&_v, 0, sizeof(_v));
   memset(&_food, 0, sizeof(_food));
@@ -590,7 +599,9 @@ void WolfScene::drawHud(DisplayDriver& d, const Wolf& w, uint16_t batt_mv) {
   d.setTextSize(1);
   d.setColor(UIColor::primary_txt);
   char tmp[24];
-  if (g->count > 1)
+  if (WolfGame::isEgg(w))
+    snprintf(tmp, sizeof(tmp), "EGG %uh", (unsigned)((WolfGame::eggLeftSecs(w) + 3599) / 3600));
+  else if (g->count > 1)
     snprintf(tmp, sizeof(tmp), "%s %umo %u/%u", w.sex ? "F" : "M", (unsigned)WolfGame::ageMonths(w),
              (unsigned)(g->current + 1), (unsigned)g->count);
   else
@@ -618,6 +629,16 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   if (!g->count) return 500;
   const Wolf& w = g->pack[g->current];
   uint8_t form = formOf(WolfGame::ageMonths(w));
+
+  if (WolfGame::isEgg(w)) {                       // not hatched yet
+    _was_egg = true;
+    d.setColor(UIColor::primary_txt);
+    for (int x = 0; x < SCREEN_W; x += 2) d.fillRect(x, GROUND_Y + 1, 1, 1);
+    eggDraw(d, w, EGG_LOOK, now, GROUND_Y, SCREEN_W);
+    drawHud(d, w, batt_mv);
+    return 110;
+  }
+  if (_was_egg) { _was_egg = false; _hatch_t0 = now; _init = false; }
 
   if (!_init || g->current != _shown_idx || w.genome != _shown_genome || form != _form) {
     _rng ^= w.genome + now;
@@ -647,6 +668,14 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
 
   d.setColor(UIColor::primary_txt);
   for (int x = 0; x < SCREEN_W; x += 2) d.fillRect(x, GROUND_Y + 1, 1, 1);     // the ground
+  if (_hatch_t0) {
+    uint32_t since = now - _hatch_t0;
+    if (since > 120000) _hatch_t0 = 0;
+    else {
+      eggShell(d, w, PET_EGG_STYLE, GROUND_Y, SCREEN_W, since);
+      if (since < 2000 && ((since / 250) & 1) == 0) d.drawTextCentered(SCREEN_W / 2, 12, "CRACK!");
+    }
+  }
   if (form == F_CHRYSALIS) d.fillRect(0, 9, SCREEN_W, 1);                      // the twig it hangs from
 
   drawProps(d, now);
@@ -668,4 +697,5 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   return 110;
 }
 
+#include "PetFactory.inc"
 #endif   // PET_INSECT

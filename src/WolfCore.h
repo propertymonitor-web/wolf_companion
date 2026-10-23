@@ -44,12 +44,25 @@
 //   0xA1 BRED    "we mated" notice to the other radio (extends the visit)
 //   0xA2 ACK     host accepts the visitor and says which wolf greets it
 //   0xA3 PING    keep-alive while a visit is going on
-#define WOLF_PKT_TYPE            PET_PKT_TYPE   // high nibble; one family per kind of pet (see PetSpecies.h)
+#if PET_MYST
+  // mystery egg: the packet family follows the pet inside, so a hatched fox still visits ordinary fox radios
+  extern uint8_t g_mystery_sp;                       // species number (= PET_ID of that pet), chosen from the radio's identity
+  uint8_t petPktType(uint8_t sp);
+  uint8_t petPktVer(uint8_t sp);
+  uint8_t petHiddenFrom(uint8_t sp);
+  uint8_t petHiddenTo(uint8_t sp);
+  const char* petNameOf(uint8_t sp);
+  uint8_t petPickSpecies(uint32_t identity);
+  #define WOLF_PKT_TYPE            petPktType(g_mystery_sp)
+  #define WOLF_PKT_VERSION         petPktVer(g_mystery_sp)
+#else
+  #define WOLF_PKT_TYPE            PET_PKT_TYPE   // high nibble; one family per kind of pet (see PetSpecies.h)
+  #define WOLF_PKT_VERSION         PET_PKT_VER
+#endif
 #define WOLF_PKT_VISIT           0x0       // low nibble
 #define WOLF_PKT_BRED            0x1
 #define WOLF_PKT_ACK             0x2
 #define WOLF_PKT_PING            0x3
-#define WOLF_PKT_VERSION         PET_PKT_VER
 
 enum WolfStageId : uint8_t { STAGE_PUP = 0, STAGE_JUVENILE = 1, STAGE_ADULT = 2 };
 
@@ -149,11 +162,26 @@ public:
 
   // helpers
   static void     traitsOf(uint32_t genome, WolfTraits& t);
-  static uint32_t ageMonths(const Wolf& w) { return w.age_secs / WOLF_SECS_PER_MONTH; }
+  // eggs: some pets (and every mystery pet) start as an egg that hatches after 24..48 hours powered on
+  static uint32_t eggSecs(uint32_t genome) {
+#if PET_MYST || PET_EGG
+    uint32_t x = genome ^ 0x5EEDC0DEu; x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
+    return (24u + x % 25u) * 3600UL;
+#else
+    (void)genome; return 0;
+#endif
+  }
+  static bool     isEgg(const Wolf& w) { uint32_t e = eggSecs(w.genome); return e && w.age_secs < e; }
+  static uint32_t eggLeftSecs(const Wolf& w) { uint32_t e = eggSecs(w.genome); return (e && w.age_secs < e) ? e - w.age_secs : 0; }
+  static uint32_t ageMonths(const Wolf& w) { uint32_t e = eggSecs(w.genome); return (w.age_secs > e ? w.age_secs - e : 0) / WOLF_SECS_PER_MONTH; }
   static uint8_t  stageOf(const Wolf& w);
   static uint8_t  stageFromMonths(uint32_t months);
   static bool     isAdult(const Wolf& w) { return ageMonths(w) >= WOLF_ADULT_MONTHS; }
-  static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return m >= PET_HIDDEN_FROM && m < PET_HIDDEN_TO; }   // e.g. a chrysalis
+#if PET_MYST
+  static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return isEgg(w) || (m >= petHiddenFrom(g_mystery_sp) && m < petHiddenTo(g_mystery_sp)); }
+#else
+  static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return isEgg(w) || (m >= PET_HIDDEN_FROM && m < PET_HIDDEN_TO); }   // an egg or a chrysalis stays put
+#endif
   static bool     related(uint32_t g1, uint32_t s1, uint32_t d1, uint32_t g2, uint32_t s2, uint32_t d2);
   uint32_t mixGenome(uint32_t mother, uint32_t father);
   void     cycleWolf();

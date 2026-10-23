@@ -12,6 +12,7 @@ import argparse, glob, os, shutil, sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--meshcore", required=True)
+ap.add_argument("--mystery", action="store_true", help="also copy the per-pet scene files (mystery egg build)")
 a = ap.parse_args()
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ui = os.path.join(a.meshcore, "examples", "companion_radio", "ui-new")
@@ -20,7 +21,10 @@ if not os.path.isdir(ui):
 if not os.path.exists(os.path.join(ui, "NovaPages.h")):
     sys.exit("apply NOVA/ORION first (NovaPages.h is missing)")
 
-for f in sorted(glob.glob(os.path.join(root, "src", "Wolf*")) + [os.path.join(root, "src", "PetSpecies.h"), os.path.join(root, "src", "PetMirror.h")]):
+extra = [os.path.join(root, "src", n) for n in ("PetSpecies.h", "PetMirror.h", "PetEgg.h", "PetFactory.inc")]
+if a.mystery:
+    extra += sorted(glob.glob(os.path.join(root, "src", "Mystery*.cpp")))
+for f in sorted(glob.glob(os.path.join(root, "src", "Wolf*"))) + extra:
     shutil.copy(f, ui)
     print("copied", os.path.basename(f))
 

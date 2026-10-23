@@ -108,7 +108,11 @@ void WolfModule::begin(UITask* ui) {
   _host = new Host(ui);
   _game = new WolfGame(_host);
   _game->begin(millis());
+#if PET_MYST
+  _scene = makePetScene(g_mystery_sp, _game);
+#else
   _scene = new WolfScene(_game);
+#endif
   g_wolf_instance = this;
 }
 
@@ -145,5 +149,10 @@ size_t WolfModule::mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt
   m->disp.startFrame();
   _scene->render(m->disp, now, batt_mv);
   const Wolf& w = _game->pack[_game->current];
-  return m->enc.line(m->disp.fb, now, out, cap, PET_NAME, w.sex, (int)WolfGame::ageMonths(w), _game->count, _game->current + 1);
+#if PET_MYST
+  const char* nm = WolfGame::isEgg(w) ? "egg" : petNameOf(g_mystery_sp);
+#else
+  const char* nm = PET_NAME;
+#endif
+  return m->enc.line(m->disp.fb, now, out, cap, nm, w.sex, (int)WolfGame::ageMonths(w), _game->count, _game->current + 1);
 }

@@ -4,6 +4,27 @@
 #include <helpers/ui/DisplayDriver.h>
 #include "WolfCore.h"
 
+// Mystery egg build: each pet's scene is compiled into its own namespace (see MysteryXxx.cpp) and reached through this.
+class PetSceneBase {
+public:
+  virtual ~PetSceneBase() {}
+  virtual int render(DisplayDriver& d, uint32_t now_ms, uint16_t batt_mv) = 0;
+};
+#if PET_MYST
+  PetSceneBase* makePetScene(uint8_t species, WolfGame* game);
+#endif
+#ifdef PET_NS
+  #define PET_NS_OPEN namespace PET_NS {
+  #define PET_NS_CLOSE }
+#else
+  #define PET_NS_OPEN
+  #define PET_NS_CLOSE
+#endif
+
+#if PET_MYST && !defined(PET_NS)
+// (nothing: in the mystery build the scenes live in the per-species files)
+#else
+PET_NS_OPEN
 
 #if PET_INSECT
 // ---- the insect version of the scene (butterfly life cycle).  Same public face as the quadruped one.
@@ -42,6 +63,8 @@ private:
   bool      _init;
   uint32_t  _last_ms, _rng;
   uint8_t   _shown_idx, _vphase, _form, _last_ev, _force;
+  bool      _was_egg;
+  uint32_t  _hatch_t0;
   uint32_t  _shown_genome, _vseen_id;
   Actor     _w, _v;
   Food      _food;
@@ -80,7 +103,7 @@ class WolfScene {
 public:
   explicit WolfScene(WolfGame* game);
 
-  enum { EV_COUNT = 17 };
+  enum { EV_COUNT = 19 };
   uint8_t debugMode() const { return _w.mode; }
   int8_t  debugDir() const { return _w.dir; }
   void forceEvent(uint8_t kind) { _force = kind + 1; }     // for tests: start this activity at the next frame
@@ -92,7 +115,7 @@ private:
   enum Mode : uint8_t { M_IDLE, M_WALK, M_SEEK, M_EAT, M_HAPPY, M_BARK, M_GREET, M_LEAVE, M_AWAY, M_RETURN,
                         // random things a wolf does (one per EvKind, in the same order)
                         M_BUNNY, M_BIRD, M_FLY, M_DIG, M_SLEEP, M_REST, M_HOWL, M_SHAKE, M_YAWN, M_CHASE,
-                        M_SNIFF, M_STRETCH, M_ZOOM, M_POUNCE, M_WALLOW, M_SWIM, M_SNAP };
+                        M_SNIFF, M_STRETCH, M_ZOOM, M_POUNCE, M_WALLOW, M_SWIM, M_SNAP, M_FIRE, M_MAGIC };
   enum VPhase : uint8_t { V_NONE, V_ENTER, V_STAY, V_LEAVE };
 
   struct Actor {
@@ -128,6 +151,8 @@ private:
   Ev        _ev;
   Hole      _hole;
   uint8_t   _last_ev, _force, _stage;
+  bool      _was_egg;
+  uint32_t  _hatch_t0;
   int       _rw;
   uint32_t  _eat_start;
 
@@ -145,3 +170,5 @@ private:
 };
 
 #endif   // !PET_INSECT
+PET_NS_CLOSE
+#endif   // mystery build without a species

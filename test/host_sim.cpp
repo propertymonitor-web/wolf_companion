@@ -11,75 +11,15 @@
 #include <vector>
 #include <deque>
 
-ColorVal UIColor::window_bkg = 0, UIColor::title_bkg = 1, UIColor::title_txt = 1, UIColor::primary_txt = 1,
-         UIColor::secondary_txt = 1, UIColor::warning_txt = 1, UIColor::popup_bkg = 0, UIColor::popup_txt = 1,
-         UIColor::corp_blue = 1;
-
-struct MockDisplay : DisplayDriver {
-  uint8_t px[128 * 64];
-  struct Txt { int x, y; std::string s; };
-  std::vector<Txt> txt;
-  int cx = 0, cy = 0;
-  MockDisplay() : DisplayDriver(128, 64) { memset(px, 0, sizeof(px)); }
-  bool isOn() override { return true; }
-  void turnOn() override {}
-  void turnOff() override {}
-  void clear() override { memset(px, 0, sizeof(px)); txt.clear(); }
-  void startFrame(ColorVal) override { clear(); }
-  void setTextSize(int) override {}
-  void setColor(ColorVal) override {}
-  void setCursor(int x, int y) override { cx = x; cy = y; }
-  void print(const char* s) override { txt.push_back({cx, cy, s}); }
-  void fillRect(int x, int y, int w, int h) override {
-    for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) set(x + i, y + j);
-  }
-  void drawRect(int x, int y, int w, int h) override {
-    for (int i = 0; i < w; i++) { set(x + i, y); set(x + i, y + h - 1); }
-    for (int j = 0; j < h; j++) { set(x, y + j); set(x + w - 1, y + j); }
-  }
-  void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override {
-    int stride = (w + 7) / 8;
-    for (int j = 0; j < h; j++) for (int i = 0; i < w; i++)
-      if (bits[j * stride + (i >> 3)] & (0x80 >> (i & 7))) set(x + i, y + j);
-  }
-  uint16_t getTextWidth(const char* s) override { return (uint16_t)(strlen(s) * 6); }
-  void endFrame() override {}
-  void set(int x, int y) { if (x >= 0 && x < 128 && y >= 0 && y < 64) px[y * 128 + x] = 1; }
-  void dump(FILE* f, const char* label) {
-    fprintf(f, "FRAME %s\n", label);
-    for (int y = 0; y < 64; y++) { for (int x = 0; x < 128; x++) fputc(px[y * 128 + x] ? '1' : '0', f); fputc('\n', f); }
-    for (auto& t : txt) fprintf(f, "TXT %d %d %s\n", t.x, t.y, t.s.c_str());
-    fprintf(f, "END\n");
-  }
-};
-
-struct MockHost : WolfHost {
-  uint32_t rng, tail, prefix;
-  std::vector<uint8_t> saved, backup;
-  std::deque<std::vector<uint8_t>> out;
-  std::string last_alert;
-  MockHost(uint32_t seed, uint32_t tailv, uint32_t pre) : rng(seed), tail(tailv), prefix(pre) {}
-  uint32_t random32() override { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
-  uint32_t identityTail() override { return tail; }
-  void ownerPrefix(uint8_t o[4]) override { memcpy(o, &prefix, 4); }
-  bool loadState(uint8_t* b, int mx, int& len) override {
-    if (saved.empty()) return false;
-    len = (int)saved.size() < mx ? (int)saved.size() : mx;
-    memcpy(b, saved.data(), len);
-    return true;
-  }
-  void saveState(const uint8_t* b, int len) override { saved.assign(b, b + len); backup.assign(b, b + len); }
-  bool loadBackup(uint8_t* b, int mx, int& len) override {
-    if (backup.empty()) return false;
-    len = (int)backup.size() < mx ? (int)backup.size() : mx;
-    memcpy(b, backup.data(), len);
-    return true;
-  }
-  void broadcast(const uint8_t* b, int len) override { out.push_back(std::vector<uint8_t>(b, b + len)); }
-  void alert(const char* t) override { last_alert = t; printf("  [alert] %s\n", t); }
-};
+#include "mock.h"
 
 static int fails = 0;
+static bool g_eggs_on = false;      // the egg tests turn this on; everywhere else the founder starts already hatched
+static uint32_t eggOff(uint32_t genome) { return g_eggs_on ? 0 : WolfGame::eggSecs(genome); }   // ages in the tests are counted from hatching
+static void skipEgg(WolfGame& g) {
+  if (g_eggs_on) return;
+  for (int i = 0; i < g.count; i++) g.pack[i].age_secs += WolfGame::eggSecs(g.pack[i].genome);
+}
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); printf("  (line %d)\n", __LINE__); fails++; } } while (0)
 
 static void deliver(MockHost& from, WolfGame& to, uint32_t now) {
@@ -129,11 +69,11 @@ static int cmd_anim(const char* path) {
   FILE* f = fopen(path, "w");
   MockHost h(12345, 0x7CA95E21, 0x11223344);
   WolfGame g(&h);
-  g.begin(0);
+  g.begin(0); skipEgg(g);
   struct Seq { const char* name; uint32_t months; } seqs[] = {{"pup", 3}, {"juv", 14}, {"adult", 30}};
   WolfScene* sc = nullptr;
   for (auto& s : seqs) {
-    g.pack[0].age_secs = s.months * WOLF_SECS_PER_MONTH;
+    g.pack[0].age_secs = s.months * WOLF_SECS_PER_MONTH + eggOff(g.pack[0].genome);
     memset(g.away, 0, sizeof(g.away));
     g.visitor.active = false;
     g.hearts_until_ms = 0;
@@ -175,9 +115,9 @@ static int cmd_mix() {
   for (int stage = 0; stage < 3; stage++) {
     MockHost h(4242 + stage, 0x7CA95E21, 0x11223344);
     WolfGame g(&h);
-    g.begin(0);
+    g.begin(0); skipEgg(g);
     uint32_t months[3] = {3, 14, 30};
-    g.pack[0].age_secs = months[stage] * WOLF_SECS_PER_MONTH;
+    g.pack[0].age_secs = months[stage] * WOLF_SECS_PER_MONTH + eggOff(g.pack[0].genome);
     memset(g.away, 0, sizeof(g.away));
     WolfScene sc(&g);
     MockDisplay d;
@@ -208,14 +148,14 @@ static int cmd_events(const char* path, int only_kind, int only_stage) {
   FILE* f = fopen(path, "w");
   MockHost h(777, 0x7CA95E21, 0x11223344);
   WolfGame g(&h);
-  g.begin(0);
+  g.begin(0); skipEgg(g);
   uint32_t months[3] = {3, 14, 30};
   int bad = 0;
   for (int stage = 0; stage < 3; stage++) {
     if (only_stage >= 0 && stage != only_stage) continue;
     for (int k = 0; k < WolfScene::EV_COUNT; k++) {
       if (only_kind >= 0 && k != only_kind) continue;
-      g.pack[0].age_secs = months[stage] * WOLF_SECS_PER_MONTH;
+      g.pack[0].age_secs = months[stage] * WOLF_SECS_PER_MONTH + eggOff(g.pack[0].genome);
       memset(g.away, 0, sizeof(g.away));
       g.visitor.active = false; g.hearts_until_ms = 0; g.treat_pending = 0; g.bark_pending = false;
       WolfScene sc(&g);
@@ -256,7 +196,7 @@ static int cmd_logic() {
   {
     MockHost h(7, 0xCAFEBABE, 1);
     WolfGame g(&h);
-    g.begin(0);
+    g.begin(0); skipEgg(g);
     CHECK(g.count == 1 && g.pack[0].genome == 0xCAFEBABE, "founder genome comes from the key tail");
     CHECK(g.pack[0].founder, "founder flag");
     CHECK(g.pack[0].visits_needed >= WOLF_CONSENT_MIN && g.pack[0].visits_needed <= WOLF_CONSENT_MAX, "consent threshold range");
@@ -272,7 +212,7 @@ static int cmd_logic() {
   {
     int males = 0, females = 0; int need[10] = {0};
     for (uint32_t seed = 1; seed < 300; seed++) {
-      MockHost h(seed * 2654435761u + 1, 0x1234ABCD + seed * 0x85EBCA6Bu, 1); WolfGame g(&h); g.begin(0);
+      MockHost h(seed * 2654435761u + 1, 0x1234ABCD + seed * 0x85EBCA6Bu, 1); WolfGame g(&h); g.begin(0); skipEgg(g);
       (g.pack[0].sex ? females : males)++;
       need[g.pack[0].visits_needed]++;
     }
@@ -283,7 +223,7 @@ static int cmd_logic() {
   }
   printf("== messages: treat every 10-15, bark random ==\n");
   {
-    MockHost h(99, 0x1111AAAA, 1); WolfGame g(&h); g.begin(0);
+    MockHost h(99, 0x1111AAAA, 1); WolfGame g(&h); g.begin(0); skipEgg(g);
     int since = 0, treats = 0; int minGap = 999, maxGap = 0;
     for (int i = 0; i < 3000; i++) {
       g.onMessage(); since++;
@@ -307,7 +247,7 @@ static int cmd_logic() {
   }
   printf("== persistence ==\n");
   {
-    MockHost h(5, 0x0BADF00D, 2); WolfGame g(&h); g.begin(0);
+    MockHost h(5, 0x0BADF00D, 2); WolfGame g(&h); g.begin(0); skipEgg(g);
     g.pack[0].age_secs = 123456; g.pack[0].sex = 1;
     Wolf c; memset(&c, 0, sizeof(c)); c.genome = 0xDEADBEEF; c.age_secs = 77; c.sex = 0; c.visits_needed = 5; c.sire = 0x1111; c.dam = 0x2222; g.pack[g.count++] = c;
     g.current = 1;
@@ -326,7 +266,7 @@ static int cmd_logic() {
     // even with both copies gone, the same radio gets the same sex again
     int diffs = 0;
     for (uint32_t t = 1; t < 200; t++) {
-      MockHost a(1, t * 7919u, 2), b(99, t * 7919u, 2); WolfGame ga(&a), gb(&b); ga.begin(0); gb.begin(0);
+      MockHost a(1, t * 7919u, 2), b(99, t * 7919u, 2); WolfGame ga(&a), gb(&b); ga.begin(0); skipEgg(ga); gb.begin(0); skipEgg(gb);
       if (ga.pack[0].sex != gb.pack[0].sex) diffs++;
     }
     CHECK(diffs == 0, "a wiped radio gets the same sex back (%d differ)", diffs);
@@ -343,9 +283,9 @@ static int cmd_logic() {
     int min_visits_at_mating = 999, max_away_ms = 0;
     for (int run = 0; run < total_runs; run++) {
       Radio M(1000 + run * 7, 0xAAAA0000u + run, 0x01010101u + run), F(2000 + run * 13, 0x5555C000u + run, 0x02020202u + run);
-      M.game.begin(0); F.game.begin(0);
+      M.game.begin(0); skipEgg(M.game); F.game.begin(0); skipEgg(F.game);
       M.game.pack[0].sex = 0; F.game.pack[0].sex = 1;
-      M.game.pack[0].age_secs = F.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH;
+      M.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(M.game.pack[0].genome); F.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(F.game.pack[0].genome);
       bool was_preg = false;
       uint32_t away_since = 0; bool was_away = false;
       uint32_t last_visit_id = 0; int hosted = 0;
@@ -380,7 +320,7 @@ static int cmd_logic() {
   printf("== two radios: wolves return when the connection drops ==\n");
   {
     Radio A(11, 0xAAAA0001, 0x0A0A0A0A), B(12, 0x5555C001, 0x0B0B0B0B);
-    A.game.begin(0); B.game.begin(0);
+    A.game.begin(0); skipEgg(A.game); B.game.begin(0); skipEgg(B.game);
     uint32_t t = 0; bool in_range = true; uint32_t cut_at = 0, home_at = 0, vis_gone_at = 0;
     for (; t < 3600u * 1000u; t += 100) {
       A.game.tick(t); B.game.tick(t);
@@ -401,7 +341,7 @@ static int cmd_logic() {
   printf("== alone: nobody to visit, wolf stays home ==\n");
   {
     Radio A(21, 0xAAAA0002, 0x0C0C0C0C);
-    A.game.begin(0);
+    A.game.begin(0); skipEgg(A.game);
     bool ever_away = false; size_t sent = 0;
     for (uint32_t t = 0; t < 2u * 3600u * 1000u; t += 100) {
       A.game.tick(t);
@@ -415,9 +355,9 @@ static int cmd_logic() {
   printf("== pups carry both parents' genes ==\n");
   {
     Radio M(5, 0xAAAA1111, 0x01010101), F(6, 0x5555CCCC, 0x02020202);
-    M.game.begin(0); F.game.begin(0);
+    M.game.begin(0); skipEgg(M.game); F.game.begin(0); skipEgg(F.game);
     M.game.pack[0].sex = 0; F.game.pack[0].sex = 1;
-    M.game.pack[0].age_secs = F.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH;
+    M.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(M.game.pack[0].genome); F.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(F.game.pack[0].genome);
     uint32_t t = 0; bool mated = false;
     for (; t < 24u * 3600u * 1000u && !mated; t += 100) {
       M.game.tick(t); F.game.tick(t); pump(M, F, t); pump(F, M, t);
@@ -446,17 +386,17 @@ static int cmd_logic() {
   printf("== same sex / juvenile never mate ==\n");
   {
     Radio A(31, 0xAAAA0003, 0x0D0D0D0D), B(32, 0x5555C003, 0x0E0E0E0E);
-    A.game.begin(0); B.game.begin(0);
+    A.game.begin(0); skipEgg(A.game); B.game.begin(0); skipEgg(B.game);
     A.game.pack[0].sex = 1; B.game.pack[0].sex = 1;
-    A.game.pack[0].age_secs = B.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH;
+    A.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(A.game.pack[0].genome); B.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(B.game.pack[0].genome);
     for (uint32_t t = 0; t < 8u * 3600u * 1000u; t += 100) { A.game.tick(t); B.game.tick(t); pump(A, B, t); pump(B, A, t); }
     CHECK(!A.game.pack[0].preg_secs_left && !B.game.pack[0].preg_secs_left, "two females never mate");
     printf("  two females met %u times, no mating\n", (unsigned)A.game.pairVisits(A.game.pack[0].genome, B.game.pack[0].genome));
     Radio C(33, 0xAAAA0004, 0x0F0F0F0F), D(34, 0x5555C004, 0x10101010);
-    C.game.begin(0); D.game.begin(0);
+    C.game.begin(0); skipEgg(C.game); D.game.begin(0); skipEgg(D.game);
     C.game.pack[0].sex = 0; D.game.pack[0].sex = 1;
-    C.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH; D.game.pack[0].age_secs = 10 * WOLF_SECS_PER_MONTH;   // she is a juvenile
-    for (uint32_t t = 0; t < 8u * 3600u * 1000u; t += 100) { C.game.tick(t); D.game.tick(t); pump(C, D, t); pump(D, C, t); D.game.pack[0].age_secs = 10 * WOLF_SECS_PER_MONTH; }
+    C.game.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(C.game.pack[0].genome); D.game.pack[0].age_secs = 10 * WOLF_SECS_PER_MONTH + eggOff(D.game.pack[0].genome);   // she is a juvenile
+    for (uint32_t t = 0; t < 8u * 3600u * 1000u; t += 100) { C.game.tick(t); D.game.tick(t); pump(C, D, t); pump(D, C, t); D.game.pack[0].age_secs = 10 * WOLF_SECS_PER_MONTH + eggOff(D.game.pack[0].genome); }
     CHECK(!D.game.pack[0].preg_secs_left, "a juvenile never mates");
   }
   printf("%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
@@ -469,8 +409,8 @@ static int cmd_mirror(const char* path) {
   FILE* f = fopen(path, "w");
   MockHost h(99, 0x7CA95E21, 0x11223344);
   WolfGame g(&h);
-  g.begin(0);
-  g.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH;
+  g.begin(0); skipEgg(g);
+  g.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH + eggOff(g.pack[0].genome);
   WolfScene sc(&g);
   PetMirror pm;
   PetMirrorEncoder enc;
@@ -492,12 +432,77 @@ static int cmd_mirror(const char* path) {
   return big < 1900 ? 0 : 1;
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Eggs: hatch after 24..48 hours powered on, stay home, announce the hatching, survive a reboot.
+static int cmd_egg(const char* frames) {
+  g_eggs_on = true;
+  if (!WolfGame::eggSecs(1234567u)) { printf("(this pet has no egg stage)\n"); return 0; }
+  printf("== egg ==\n");
+  uint32_t lo = ~0u, hi = 0;
+  for (uint32_t gm = 1; gm < 5000; gm++) {
+    uint32_t e = WolfGame::eggSecs(gm * 2654435761u);
+    if (e < lo) lo = e;
+    if (e > hi) hi = e;
+  }
+  printf("  hatch time over 5000 genomes: %.1f .. %.1f hours\n", lo / 3600.0, hi / 3600.0);
+  CHECK(lo >= 24u * 3600 && hi <= 48u * 3600, "hatch time stays within 24..48 hours");
+  CHECK(lo <= 25u * 3600 && hi >= 47u * 3600, "hatch times use the whole 24..48 hour range");
+  MockHost h(4242, 0x1357BEEF, 3);
+  WolfGame g(&h);
+  g.begin(0);
+  const uint32_t eggs = WolfGame::eggSecs(g.pack[0].genome);
+  CHECK(WolfGame::isEgg(g.pack[0]) && WolfGame::ageMonths(g.pack[0]) == 0 && WolfGame::hidden(g.pack[0]), "a new pet is an egg, 0 months old, and stays home");
+  printf("  this egg hatches after %.1f hours\n", eggs / 3600.0);
+  uint32_t t = 0;
+  bool went_visiting = false;
+  for (uint32_t sec = 0; sec < eggs - 5; sec++) { t += 1000; g.tick(t); if (g.isAway(0)) went_visiting = true; }
+  CHECK(WolfGame::isEgg(g.pack[0]) && !went_visiting, "egg still an egg 5 s before the time, and it never went visiting");
+  // a reboot in the middle keeps the progress
+  g.save();
+  { MockHost h2(1, 0x1357BEEF, 3); h2.saved = h.saved; WolfGame g2(&h2); g2.begin(0);
+    CHECK(WolfGame::isEgg(g2.pack[0]) && WolfGame::eggLeftSecs(g2.pack[0]) <= 6, "egg progress survives a reboot"); }
+  h.last_alert = "";
+  for (int sec = 0; sec < 10; sec++) { t += 1000; g.tick(t); }
+  CHECK(!WolfGame::isEgg(g.pack[0]), "egg hatched");
+  CHECK(h.last_alert == "The egg hatched!", "hatching is announced");
+  CHECK(WolfGame::stageOf(g.pack[0]) == STAGE_PUP && WolfGame::ageMonths(g.pack[0]) == 0, "it hatches as a newborn pup");
+  // look at the egg: a handful of frames from early to hatching
+  if (frames) {
+    FILE* f = fopen(frames, "w");
+    Wolf w = g.pack[0];
+    MockDisplay d;
+    uint32_t pr[] = {0, 200, 400, 600, 800, 930, 980};
+    for (uint32_t p : pr) {
+      w.age_secs = (uint32_t)((uint64_t)eggs * p / 1000);
+      g.pack[0] = w;
+      WolfScene sc(&g);
+      uint32_t n = 2000;
+      for (int i = 0; i < 6; i++, n += 110) { d.startFrame(0); sc.render(d, n, 3900); }
+      char lab[32]; snprintf(lab, sizeof(lab), "egg_%03u", p); d.dump(f, lab);
+    }
+    // the hatching itself: egg, then the first pup frames with the shell beside it
+    w.age_secs = eggs - 2; g.pack[0] = w;
+    WolfScene sc(&g);
+    uint32_t n = 5000;
+    for (int i = 0; i < 40; i++, n += 110) {
+      if (i == 8) { g.pack[0].age_secs = eggs + 1; }
+      d.startFrame(0); sc.render(d, n, 3900);
+      if (i % 4 == 0) { char lab[32]; snprintf(lab, sizeof(lab), "hatch_%02d", i); d.dump(f, lab); }
+    }
+    fclose(f);
+  }
+  g_eggs_on = false;
+  return 0;
+}
+
 int main(int argc, char** argv) {
   if (argc >= 3 && !strcmp(argv[1], "sheet")) return cmd_sheet(argv[2]);
   if (argc >= 3 && !strcmp(argv[1], "mirror")) return cmd_mirror(argv[2]);
   if (argc >= 2 && !strcmp(argv[1], "mix")) return cmd_mix();
   if (argc >= 3 && !strcmp(argv[1], "anim")) return cmd_anim(argv[2]);
   if (argc >= 3 && !strcmp(argv[1], "events")) return cmd_events(argv[2], argc >= 4 ? atoi(argv[3]) : -1, argc >= 5 ? atoi(argv[4]) : -1);
+  if (argc >= 2 && !strcmp(argv[1], "egg")) return cmd_egg(argc >= 3 ? argv[2] : nullptr) + (fails ? 1 : 0);
   if (argc >= 2 && !strcmp(argv[1], "logic")) return cmd_logic();
   printf("usage: host_sim sheet|anim|events <file> [kind [stage]] | logic\n");
   return 2;

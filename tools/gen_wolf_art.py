@@ -253,7 +253,8 @@ def main(out_path):
 
         for t in range(3):
             for fr in range(2):
-                add("tail%d_%d" % (t, fr), st.render([TAILS[t][fr]]))
+                tp = TAILS[t][fr]
+                add("tail%d_%d" % (t, fr), st.render(tp if isinstance(tp[0], list) else [tp]))
 
         def P(key):
             sym, x, y, w, h = parts[key]
