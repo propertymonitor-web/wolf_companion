@@ -61,6 +61,7 @@ jobs:
           g++ -std=c++17 -I src -I mc/src -DPET_$SP=1 test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp src/WolfInsect.cpp -o host_sim
           ./host_sim logic | grep -v "\[alert\]"
           ./host_sim mix | grep -E "STUCK|stage"
+          ./host_sim mirror mirror.txt
 
       - name: Apply ORION, then the wolf
         run: |

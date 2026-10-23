@@ -3,6 +3,7 @@
 //   ./host_sim sheet frames.txt | ./host_sim anim frames.txt | ./host_sim logic
 #include <helpers/ui/DisplayDriver.h>
 #include "WolfCore.h"
+#include "PetMirror.h"
 #include "WolfScene.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -445,8 +446,38 @@ static int cmd_logic() {
   return fails ? 1 : 0;
 }
 
+
+// Dashboard mirror: render a few minutes, write every dashboard line plus the true frame for a decoder test.
+static int cmd_mirror(const char* path) {
+  FILE* f = fopen(path, "w");
+  MockHost h(99, 0x7CA95E21, 0x11223344);
+  WolfGame g(&h);
+  g.begin(0);
+  g.pack[0].age_secs = 30 * WOLF_SECS_PER_MONTH;
+  WolfScene sc(&g);
+  PetMirror pm;
+  PetMirrorEncoder enc;
+  uint32_t t = 100000; size_t total = 0, lines = 0, big = 0;
+  static char buf[4000];
+  for (int i = 0; i < 3000; i++, t += 125) {
+    if (i % 200 == 100) g.treat_pending = 1;
+    pm.startFrame();
+    sc.render(pm, t, 3900);
+    size_t n = enc.line(pm.fb, t, buf, sizeof(buf), PET_NAME, g.pack[0].sex, 30, 1, 1);
+    if (!n) continue;
+    lines++; total += n; if (n > big) big = n;
+    fprintf(f, "L %s\nR ", buf);
+    for (int k = 0; k < PM_BYTES; k++) fprintf(f, "%02x", pm.fb[k]);
+    fprintf(f, "\n");
+  }
+  fclose(f);
+  printf("%zu lines, %zu bytes total, biggest %zu, average %zu bytes/line\n", lines, total, big, lines ? total / lines : 0);
+  return big < 1900 ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
   if (argc >= 3 && !strcmp(argv[1], "sheet")) return cmd_sheet(argv[2]);
+  if (argc >= 3 && !strcmp(argv[1], "mirror")) return cmd_mirror(argv[2]);
   if (argc >= 2 && !strcmp(argv[1], "mix")) return cmd_mix();
   if (argc >= 3 && !strcmp(argv[1], "anim")) return cmd_anim(argv[2]);
   if (argc >= 3 && !strcmp(argv[1], "events")) return cmd_events(argv[2], argc >= 4 ? atoi(argv[3]) : -1, argc >= 5 ? atoi(argv[4]) : -1);

@@ -4,6 +4,7 @@
 #include <helpers/ui/DisplayDriver.h>
 #include "WolfCore.h"
 #include "WolfScene.h"
+#include <stddef.h>
 
 class UITask;
 
@@ -19,10 +20,12 @@ public:
   int  render(DisplayDriver& d, uint16_t batt_mv);   // draw the wolf screen; returns ms to next frame
   void nextWolf(char* desc, int desc_len);      // long press on the wolf screen: show the next wolf
   void save();
+  size_t mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv);   // one dashboard line (0 = nothing to send)
 
 private:
   struct Host;                                  // WolfHost implementation (WolfModule.cpp)
   Host*      _host;
   WolfGame*  _game;
   WolfScene* _scene;
+  void*      _mirror;               // PetMirror + encoder, created on first use
 };

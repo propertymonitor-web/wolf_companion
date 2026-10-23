@@ -1,4 +1,5 @@
 #include "WolfModule.h"
+#include "PetMirror.h"
 #include "UITask.h"
 #include "../MyMesh.h"
 #include "../DataStore.h"
@@ -69,10 +70,19 @@ struct WolfModule::Host : public WolfHost {
 };
 
 // ---- module ------------------------------------------------------------------------------------
-WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL) {}
+static WolfModule* g_wolf_instance = NULL;
+struct MirrorState { PetMirror disp; PetMirrorEncoder enc; };
+
+// called from the dashboard link in MyMesh.cpp (see apply_orion_wolf.py)
+size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
+  return g_wolf_instance ? g_wolf_instance->mirrorLine(now, out, cap, batt_mv) : 0;
+}
+
+WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL) {}
 
 WolfModule::~WolfModule() {
   delete _scene;
+  delete (MirrorState*)_mirror;
   delete _game;
   delete _host;
 }
@@ -82,6 +92,7 @@ void WolfModule::begin(UITask* ui) {
   _game = new WolfGame(_host);
   _game->begin(millis());
   _scene = new WolfScene(_game);
+  g_wolf_instance = this;
 }
 
 void WolfModule::loop() {
@@ -108,4 +119,14 @@ void WolfModule::nextWolf(char* desc, int desc_len) {
 
 void WolfModule::save() {
   if (_game) _game->save();
+}
+
+size_t WolfModule::mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
+  if (!_scene || !_game || !_game->count) return 0;
+  if (!_mirror) _mirror = new MirrorState();
+  MirrorState* m = (MirrorState*)_mirror;
+  m->disp.startFrame();
+  _scene->render(m->disp, now, batt_mv);
+  const Wolf& w = _game->pack[_game->current];
+  return m->enc.line(m->disp.fb, now, out, cap, PET_NAME, w.sex, (int)WolfGame::ageMonths(w), _game->count, _game->current + 1);
 }
