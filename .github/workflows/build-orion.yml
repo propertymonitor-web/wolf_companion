@@ -140,6 +140,7 @@ jobs:
             FILES=""
             if [ -f out/firmware.uf2 ]; then cp out/firmware.uf2 "$P.uf2"; FILES="$P.uf2"; fi
             if [ -f out/firmware.zip ]; then cp out/firmware.zip "$P-update.zip"; FILES="$FILES $P-update.zip"; fi
+            if [ -f out/firmware.hex ]; then cp out/firmware.hex "$P.hex"; FILES="$FILES $P.hex"; fi
           fi
           gh release create "$TAG" $FILES --title "ORION + $SPECIES ($BOARD, $UNITS)" \
             --notes "LODESTAR ORION with the $SPECIES pet. Radio: $BOARD."
