@@ -97,7 +97,7 @@ jobs:
       - name: Show compile errors
         if: failure()
         run: |
-          grep -E "error|undefined reference|No such file" build.log | head -25 | while IFS= read -r l; do
+          { grep -E "error|overflow|will not fit|region|FAILED|undefined reference|No such file" build.log; tail -n 12 build.log; } | head -40 | while IFS= read -r l; do
             echo "::error::${l:0:900}"
           done
 
@@ -105,6 +105,7 @@ jobs:
         run: |
           mkdir -p out
           B=mc/.pio/build/"$PIO_ENV"
+          ls -la $B | head -30
           if [ "${{ inputs.kind }}" = esp32 ]; then
             cp $B/firmware-merged.bin out/
             cp $B/firmware.bin out/
