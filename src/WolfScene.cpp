@@ -76,6 +76,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SCREEN_W   128
+#define GROUND_Y   58      // row the paws stand on
+#define MAX_CW     72
+#define MAX_CH     60
+
+#if PET_MYST
+  // all the mystery pets share one set of drawing buffers (they are never drawn at the same time)
+  extern uint8_t g_pet_reg[MAX_CW * MAX_CH];
+  extern uint8_t g_pet_lit[MAX_CW * MAX_CH];
+  extern uint8_t g_pet_bits[((MAX_CW + 7) / 8) * MAX_CH];
+  #define g_reg  g_pet_reg
+  #define g_lit  g_pet_lit
+  #define g_bits g_pet_bits
+#endif
+
 PET_NS_OPEN
 #include PET_ART
 
@@ -84,11 +99,6 @@ PET_NS_OPEN
 #else
   #define EGG_LOOK PET_EGG_STYLE
 #endif
-
-#define SCREEN_W   128
-#define GROUND_Y   58      // row the paws stand on
-#define MAX_CW     72
-#define MAX_CH     60
 
 // ------------------------------------------------------------ small bitmaps --
 static const uint8_t bone_bits[]  = { 0xC1, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xC1, 0x80 };   // 9 x 4
@@ -111,9 +121,11 @@ static const uint8_t heart_bits[] = { 0x6C, 0xFE, 0xFE, 0x7C, 0x38, 0x10 };     
 enum Region : uint8_t { R_NONE = 0, R_BODY, R_LEG, R_HEAD, R_MUZZLE, R_TAILTIP, R_CHEST, R_SADDLE, R_EAR, R_TAIL };
 enum Kind   : uint8_t { K_BODY, K_LEG, K_HEAD_SIDE, K_HEAD_FRONT, K_EAR, K_TAIL };
 
+#if !PET_MYST
 static uint8_t g_reg[MAX_CW * MAX_CH];
 static uint8_t g_lit[MAX_CW * MAX_CH];
 static uint8_t g_bits[((MAX_CW + 7) / 8) * MAX_CH];
+#endif
 static int g_ch;     // canvas height of the sprite being built
 
 static void stamp(const WolfPart& p, int cw, bool mirror, Kind kind, int dy = 0) {
