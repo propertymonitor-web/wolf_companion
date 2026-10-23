@@ -55,7 +55,7 @@ struct MockDisplay : DisplayDriver {
 
 struct MockHost : WolfHost {
   uint32_t rng, tail, prefix;
-  std::vector<uint8_t> saved;
+  std::vector<uint8_t> saved, backup;
   std::deque<std::vector<uint8_t>> out;
   std::string last_alert;
   MockHost(uint32_t seed, uint32_t tailv, uint32_t pre) : rng(seed), tail(tailv), prefix(pre) {}
@@ -68,7 +68,13 @@ struct MockHost : WolfHost {
     memcpy(b, saved.data(), len);
     return true;
   }
-  void saveState(const uint8_t* b, int len) override { saved.assign(b, b + len); }
+  void saveState(const uint8_t* b, int len) override { saved.assign(b, b + len); backup.assign(b, b + len); }
+  bool loadBackup(uint8_t* b, int mx, int& len) override {
+    if (backup.empty()) return false;
+    len = (int)backup.size() < mx ? (int)backup.size() : mx;
+    memcpy(b, backup.data(), len);
+    return true;
+  }
   void broadcast(const uint8_t* b, int len) override { out.push_back(std::vector<uint8_t>(b, b + len)); }
   void alert(const char* t) override { last_alert = t; printf("  [alert] %s\n", t); }
 };
@@ -262,11 +268,11 @@ static int cmd_logic() {
     CHECK(WolfGame::isAdult(g.pack[0]), "adult after 4 days (%u months)", (unsigned)WolfGame::ageMonths(g.pack[0]));
     printf("  4 days -> %u months\n", (unsigned)WolfGame::ageMonths(g.pack[0]));
   }
-  printf("== sex is random, thresholds vary ==\n");
+  printf("== sex follows the radio, thresholds vary ==\n");
   {
     int males = 0, females = 0; int need[10] = {0};
     for (uint32_t seed = 1; seed < 300; seed++) {
-      MockHost h(seed * 2654435761u + 1, 0x1234ABCD, 1); WolfGame g(&h); g.begin(0);
+      MockHost h(seed * 2654435761u + 1, 0x1234ABCD + seed * 0x85EBCA6Bu, 1); WolfGame g(&h); g.begin(0);
       (g.pack[0].sex ? females : males)++;
       need[g.pack[0].visits_needed]++;
     }
@@ -313,6 +319,17 @@ static int cmd_logic() {
           g2.pack[1].visits_needed == 5 && g2.pack[1].sire == 0x1111, "wolves round-trip through flash");
     CHECK(g2.pairVisits(0x0BADF00D, 102) == 3 && g2.pairVisits(0x0BADF00D, 999) == 0, "visit memory round-trips");
     printf("  saved state %u bytes\n", (unsigned)h.saved.size());
+    // a power cut in the middle of a save leaves a cut-off file: the second copy must take over
+    MockHost h3(7, 0x0BADF00D, 2); h3.saved.assign(h.saved.begin(), h.saved.begin() + 40); h3.backup = h.saved;
+    WolfGame g3(&h3); g3.begin(0);
+    CHECK(g3.count == 2 && g3.pack[0].age_secs == 123456 && g3.pack[0].sex == 1, "cut-off save: age and sex come back from the backup copy");
+    // even with both copies gone, the same radio gets the same sex again
+    int diffs = 0;
+    for (uint32_t t = 1; t < 200; t++) {
+      MockHost a(1, t * 7919u, 2), b(99, t * 7919u, 2); WolfGame ga(&a), gb(&b); ga.begin(0); gb.begin(0);
+      if (ga.pack[0].sex != gb.pack[0].sex) diffs++;
+    }
+    CHECK(diffs == 0, "a wiped radio gets the same sex back (%d differ)", diffs);
   }
   printf("== kinship ==\n");
   {

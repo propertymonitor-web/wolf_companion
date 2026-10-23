@@ -99,7 +99,7 @@ void WolfGame::createFounder() {
   memset(pack, 0, sizeof(pack));
   Wolf& w = pack[0];
   w.genome = _h->identityTail();
-  w.sex = (uint8_t)rnd(0, 1);
+  { uint32_t x = w.genome; x ^= x >> 15; x *= 0x2C1B3C6Du; x ^= x >> 12; x *= 0x297A2D39u; x ^= x >> 15; w.sex = (uint8_t)(x & 1); }      // from the radio's identity, so it is the same even if the flash is ever wiped
   w.founder = 1;
   w.visits_needed = rollNeed();
   count = 1;
@@ -112,6 +112,7 @@ void WolfGame::begin(uint32_t now_ms) {
   uint8_t buf[WOLF_STATE_MAX];
   int len = 0;
   bool ok = _h->loadState(buf, sizeof(buf), len) && deserialize(buf, len);
+  if (!ok) { len = 0; ok = _h->loadBackup(buf, sizeof(buf), len) && deserialize(buf, len); }   // first copy missing or damaged
   if (!ok) {
     createFounder();
     save();

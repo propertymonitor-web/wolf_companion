@@ -8,6 +8,7 @@
 extern DataStore store;   // defined in main.cpp
 
 #define WOLF_STATE_FILE PET_STATE_FILE
+#define WOLF_BACKUP_FILE PET_STATE_FILE ".bak"
 
 // ---- platform glue ---------------------------------------------------------------------------
 static File wolfOpenWrite(FILESYSTEM* fs, const char* filename) {
@@ -52,13 +53,29 @@ struct WolfModule::Host : public WolfHost {
     return true;
   }
 
+  // Two copies, written one after the other: if the power dies in the middle of a write, the other copy is intact.
   void saveState(const uint8_t* buf, int len) override {
     FILESYSTEM* fs = store.getPrimaryFS();
     if (!fs) return;
-    File f = wolfOpenWrite(fs, WOLF_STATE_FILE);
-    if (!f) return;
-    f.write(buf, len);
+    const char* names[2] = { WOLF_STATE_FILE, WOLF_BACKUP_FILE };
+    for (int i = 0; i < 2; i++) {
+      File f = wolfOpenWrite(fs, names[i]);
+      if (!f) continue;
+      f.write(buf, len);
+      f.close();
+    }
+  }
+
+  bool loadBackup(uint8_t* buf, int maxlen, int& len) override {
+    FILESYSTEM* fs = store.getPrimaryFS();
+    if (!fs || !fs->exists(WOLF_BACKUP_FILE)) return false;
+    File f = store.openRead(WOLF_BACKUP_FILE);
+    if (!f) return false;
+    int n = (int)f.read(buf, maxlen);
     f.close();
+    if (n <= 0) return false;
+    len = n;
+    return true;
   }
 
   void broadcast(const uint8_t* buf, int len) override {

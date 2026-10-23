@@ -36,7 +36,7 @@
 #define WOLF_PING_MS             10000     // keep-alive between the two radios during a visit
 #define WOLF_PEER_LOST_MS        25000     // no word from the other radio this long -> go home
 #define WOLF_REQUEST_WAIT_MS     9000      // wait this long for a host to answer a visit request
-#define WOLF_SAVE_EVERY_S        1800      // flash save interval (also saved on events)
+#define WOLF_SAVE_EVERY_S        600       // flash save interval (also saved on events)
 
 // ----------------------------------------------------------------- packets --
 // Sent as zero-hop MeshCore control packets (payload[0] has bit 7 set, as required).
@@ -117,7 +117,8 @@ struct WolfHost {
   virtual uint32_t identityTail() = 0;               // last 4 bytes of the public key (big-endian) = last 8 hex chars
   virtual void ownerPrefix(uint8_t out[4]) = 0;      // first 4 bytes of the public key
   virtual bool loadState(uint8_t* buf, int maxlen, int& len) = 0;
-  virtual void saveState(const uint8_t* buf, int len) = 0;
+  virtual void saveState(const uint8_t* buf, int len) = 0;   // should keep a second copy: see loadBackup
+  virtual bool loadBackup(uint8_t* buf, int maxlen, int& len) { (void)buf; (void)maxlen; (void)len; return false; }   // the second copy, used when the first is damaged (power cut while saving)
   virtual void broadcast(const uint8_t* buf, int len) = 0;   // zero-hop control packet
   virtual void alert(const char* text) = 0;          // short popup on the radio's screen
 };
