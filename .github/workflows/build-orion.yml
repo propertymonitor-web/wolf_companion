@@ -14,7 +14,7 @@ on:
         description: "Which pet"
         type: choice
         default: wolf
-        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig]
+        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig, donkey, unicorn, dragon, kitsune, griffin, phoenix, mystery]
       env:
         description: "PlatformIO environment (the radio). Default is the Heltec V4"
         type: string
@@ -71,15 +71,21 @@ jobs:
         run: |
           set -o pipefail
           SP=$(echo "${{ inputs.species }}" | tr a-z A-Z)
-          g++ -std=c++17 -I src -I mc/src -DPET_$SP=1 test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp src/WolfInsect.cpp -o host_sim
-          ./host_sim logic | grep -v "\[alert\]"
-          ./host_sim mix | grep -E "STUCK|stage"
-          ./host_sim mirror mirror.txt
+          if [ "$SP" = MYSTERY ]; then
+            g++ -std=c++17 -I src -I mc/src -I test -DPET_MYSTERY=1 test/mystery_sim.cpp src/WolfCore.cpp src/Mystery[A-Z]*.cpp -o mystery_sim
+            ./mystery_sim | tail -3
+          else
+            g++ -std=c++17 -I src -I mc/src -I test -DPET_$SP=1 test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp src/WolfInsect.cpp -o host_sim
+            ./host_sim logic | grep -v "\[alert\]"
+            ./host_sim mix | grep -E "STUCK|stage"
+            ./host_sim egg | grep -v "\[alert\]"
+            ./host_sim mirror mirror.txt
+          fi
 
       - name: Apply ORION, then the wolf
         run: |
           python3 orion/tools/apply_nova.py --meshcore mc
-          python3 tools/apply_orion_wolf.py --meshcore mc
+          python3 tools/apply_orion_wolf.py --meshcore mc $([ "${{ inputs.species }}" = mystery ] && echo --mystery)
 
       - name: Build firmware
         env:
