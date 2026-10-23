@@ -99,9 +99,9 @@ size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
   return g_wolf_instance ? g_wolf_instance->mirrorLine(now, out, cap, batt_mv) : 0;
 }
 
-WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL), _scene_head(0xFF) {
+WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL) {
 #if PET_MYST
-  _scene_sp = 0;
+  _scene_sp = 0; _scene_head = 0xFF;
 #endif
 }
 
