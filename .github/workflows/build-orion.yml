@@ -105,13 +105,15 @@ jobs:
         run: |
           mkdir -p out
           B=mc/.pio/build/"$PIO_ENV"
-          ls -la $B | head -30
+          echo "::notice::build dir: $(ls $B | tr '\n' ' ' | cut -c1-600)"
           if [ "${{ inputs.kind }}" = esp32 ]; then
             cp $B/firmware-merged.bin out/
             cp $B/firmware.bin out/
           else
-            cp $B/firmware.uf2 out/
+            cp $B/firmware.uf2 out/ 2>/dev/null || true
             cp $B/firmware.zip out/ 2>/dev/null || true
+            cp $B/firmware.hex out/ 2>/dev/null || true
+            ls out | grep -q . || { echo "::error::no firmware files found"; exit 1; }
           fi
           git -C mc rev-parse HEAD > out/meshcore_commit.txt
           ls -la out
@@ -135,7 +137,8 @@ jobs:
           if [ "$KIND" = esp32 ]; then
             cp out/firmware-merged.bin "$P-merged.bin"; cp out/firmware.bin "$P-update.bin"; FILES="$P-merged.bin $P-update.bin"
           else
-            cp out/firmware.uf2 "$P.uf2"; FILES="$P.uf2"
+            FILES=""
+            if [ -f out/firmware.uf2 ]; then cp out/firmware.uf2 "$P.uf2"; FILES="$P.uf2"; fi
             if [ -f out/firmware.zip ]; then cp out/firmware.zip "$P-update.zip"; FILES="$FILES $P-update.zip"; fi
           fi
           gh release create "$TAG" $FILES --title "ORION + $SPECIES ($BOARD, $UNITS)" \
