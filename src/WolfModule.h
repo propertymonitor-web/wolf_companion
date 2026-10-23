@@ -29,9 +29,9 @@ private:
 #if PET_MYST
   PetSceneBase* _scene;
   uint8_t       _scene_sp;          // which pet's pictures _scene draws (a mixed family has several)
-  void          syncScene();
 #else
   WolfScene* _scene;
 #endif
   void*      _mirror;               // PetMirror + encoder, created on first use
+  void       syncScene();           // (mystery build) switch pictures when the shown pet is another kind
 };
