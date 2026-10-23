@@ -29,6 +29,18 @@
   #define PREY_ARC 5
   #define PREY_IN_SPEED 22
   #define PREY_OUT_SPEED 34
+#elif PET_PREY == 3          // a chick
+  #define PREY_SIT_R chick_sit_r
+  #define PREY_SIT_L chick_sit_l
+  #define PREY_SIT_W CHICK_SIT_R_W
+  #define PREY_SIT_H CHICK_SIT_R_H
+  #define PREY_HOP_R chick_hop_r
+  #define PREY_HOP_L chick_hop_l
+  #define PREY_HOP_W CHICK_HOP_R_W
+  #define PREY_HOP_H CHICK_HOP_R_H
+  #define PREY_ARC 3
+  #define PREY_IN_SPEED 24
+  #define PREY_OUT_SPEED 46
 #else                        // a rabbit
   #define PREY_SIT_R bunny_sit_r
   #define PREY_SIT_L bunny_sit_l
@@ -71,6 +83,19 @@
 
 // ------------------------------------------------------------ small bitmaps --
 static const uint8_t bone_bits[]  = { 0xC1, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xC1, 0x80 };   // 9 x 4
+#if PET_TREAT == 1
+  #define TREAT_BM apple
+  #define TREAT_W APPLE_W
+  #define TREAT_H APPLE_H
+#elif PET_TREAT == 2
+  #define TREAT_BM fish_r
+  #define TREAT_W FISH_R_W
+  #define TREAT_H FISH_R_H
+#else
+  #define TREAT_BM bone_bits
+  #define TREAT_W 9
+  #define TREAT_H 4
+#endif
 static const uint8_t heart_bits[] = { 0x6C, 0xFE, 0xFE, 0x7C, 0x38, 0x10 };               // 7 x 6
 
 // ------------------------------------------------------------- sprite maker --
@@ -242,9 +267,10 @@ int wolfDrawSprite(DisplayDriver& d, uint32_t genome, uint8_t stage, int x, int 
   // pack and draw
   int stride = (cw + 7) / 8;
   memset(g_bits, 0, stride * ch);
-  for (int y = 0; y < ch; y++) for (int px = 0; px < cw; px++)
+  const int keep = ch - (pose.sub < ch ? pose.sub : ch - 1);          // rows that stay above the water / mud
+  for (int y = 0; y < keep; y++) for (int px = 0; px < cw; px++)
     if (g_lit[y * cw + px]) g_bits[y * stride + (px >> 3)] |= 0x80 >> (px & 7);
-  d.drawXbm(x, ground_y - (ch - 1), g_bits, cw, ch);
+  d.drawXbm(x, ground_y + pose.sub - (ch - 1), g_bits, cw, ch);
   return cw;
 }
 
@@ -268,6 +294,7 @@ WolfScene::WolfScene(WolfGame* game) : g(game), _init(false), _last_ms(0), _rng(
   memset(&_treat, 0, sizeof(_treat));
   memset(&_ev, 0, sizeof(_ev));
   memset(&_hole, 0, sizeof(_hole));
+  memset(&_pool, 0, sizeof(_pool));
   _last_ev = 255; _force = 0; _stage = STAGE_ADULT; _rw = 60;
   _cp0[0] = _cp0[1] = 0;
 }
@@ -447,7 +474,7 @@ void WolfScene::update(uint32_t now, uint32_t dt, uint8_t stage, int rw, int vw)
 
 // ------------------------------------------------------- random activities --
 enum { EV_BUNNY, EV_BIRD, EV_FLY, EV_DIG, EV_SLEEP, EV_REST, EV_HOWL, EV_SHAKE, EV_YAWN, EV_CHASE,
-       EV_SNIFF, EV_STRETCH, EV_ZOOM, EV_POUNCE };
+       EV_SNIFF, EV_STRETCH, EV_ZOOM, EV_POUNCE, EV_WALLOW, EV_SWIM, EV_SNAP };
 
 static inline int arc(uint32_t t, uint32_t period, int height) {     // 0 -> height -> 0 over `period` ms
   if (t >= period) return 0;
@@ -471,7 +498,7 @@ uint8_t WolfScene::pickEvent(uint8_t stage) {
 
 void WolfScene::beginEvent(uint8_t kind, uint32_t now, uint8_t stage) {
   (void)stage;
-  static const uint16_t dur[EV_COUNT] = { 0, 0, 0, 4300, 0, 0, 3800, 1500, 2300, 3000, 4600, 2500, 3400, 0 };
+  static const uint16_t dur[EV_COUNT] = { 0, 0, 0, 4300, 0, 0, 3800, 1500, 2300, 3000, 4600, 2500, 3400, 0, 0, 0, 0 };
   _last_ev = kind;
   uint32_t d = dur[kind];
   if (kind == EV_SLEEP) d = rnd(9000, 15000);
@@ -692,6 +719,94 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
       break;
     }
 
+    case M_WALLOW: {                       // find some mud, roll about in it, shake off
+      fixed = false;
+      switch (_ev.phase) {
+        case 0: {
+          const int pw = 38;
+          int d = (SCREEN_W - (wx + rw)) >= wx ? 1 : -1;
+          int cx = wx + rw / 2 + d * (rw / 2 + pw / 2 + 4);
+          if (cx < pw / 2 + 2) cx = pw / 2 + 2;
+          if (cx > SCREEN_W - pw / 2 - 2) cx = SCREEN_W - pw / 2 - 2;
+          a.dir = d;
+          _pool.active = true; _pool.kind = 0; _pool.x = cx; _pool.w = pw; _pool.until = now + 45000;
+          _ev.phase = 1; _ev.pt0 = now;
+          break;
+        }
+        case 1: {                          // trot over to it
+          int wc = wx + rw / 2;
+          a.dir = _pool.x > wc ? 1 : -1;
+          if (abs(_pool.x - wc) <= 3 || now - _ev.pt0 > 7000) { _ev.phase = 2; _ev.pt0 = now; a.moving = false; a.legf = 0; }
+          else walkStep(a, dt, 15, rw);
+          break;
+        }
+        case 2: {                          // flop down and roll from side to side
+          uint32_t t = now - _ev.pt0;
+          a.dir = ((t / 650) & 1) ? 1 : -1;
+          if (t > 4300) { _ev.phase = 3; _ev.pt0 = now; }
+          break;
+        }
+        case 3:                            // up, and a good shake
+          if (now - _ev.pt0 > 1400) startMode(M_HAPPY, now, 1500);
+          break;
+      }
+      break;
+    }
+
+    case M_SWIM: {                         // slip into the water, glide about with just the eyes showing
+      fixed = false;
+      const int mouth = a.dir > 0 ? wx + rw - 3 : wx + 2;
+      switch (_ev.phase) {
+        case 0: {
+          const int pw = 56;
+          int d = (SCREEN_W - (wx + rw)) >= wx ? 1 : -1;
+          int cx = wx + rw / 2 + d * (rw / 2 + pw / 2 - 2);
+          if (cx < pw / 2 + 2) cx = pw / 2 + 2;
+          if (cx > SCREEN_W - pw / 2 - 2) cx = SCREEN_W - pw / 2 - 2;
+          a.dir = d;
+          _pool.active = true; _pool.kind = 1; _pool.x = cx; _pool.w = pw; _pool.until = now + 45000;
+          _ev.phase = 1; _ev.pt0 = now;
+          break;
+        }
+        case 1: {                          // walk to the water's edge
+          int x0 = _pool.x - _pool.w / 2, x1 = _pool.x + _pool.w / 2;
+          a.dir = (wx + rw / 2) < _pool.x ? 1 : -1;
+          bool in = a.dir > 0 ? mouth >= x0 + 4 : mouth <= x1 - 4;
+          if (in || now - _ev.pt0 > 8000) { _ev.phase = 2; _ev.pt0 = now; }
+          else walkStep(a, dt, 14, rw);
+          break;
+        }
+        case 2:                            // sink in
+          walkStep(a, dt, 7, rw);
+          if (now - _ev.pt0 > 1100) { _ev.phase = 3; _ev.pt0 = now; }
+          break;
+        case 3: {                          // glide, turning at the edges of the pool
+          int x0 = _pool.x - _pool.w / 2, x1 = _pool.x + _pool.w / 2;
+          int wc = wx + rw / 2;
+          if (wc > x1 - rw / 3) a.dir = -1;
+          if (wc < x0 + rw / 3) a.dir = 1;
+          walkStep(a, dt, 9, rw);
+          if (now - _ev.pt0 > 4800) { _ev.phase = 4; _ev.pt0 = now; }
+          break;
+        }
+        case 4:                            // rise
+          a.moving = false;
+          if (now - _ev.pt0 > 1000) startMode(M_HAPPY, now, 1500);
+          break;
+      }
+      break;
+    }
+
+    case M_SNAP: {                         // a fish leaps; SNAP!
+      fixed = false;
+      switch (_ev.phase) {
+        case 0: _ev.phase = 1; _ev.pt0 = now; _ev.show = true; break;
+        case 1: if (now - _ev.pt0 > 850) { _ev.phase = 2; _ev.pt0 = now; _ev.show = false; } break;
+        case 2: if (now - _ev.pt0 > 1300) startMode(M_HAPPY, now, 1400); break;
+      }
+      break;
+    }
+
     case M_STRETCH:
       if (now >= a.until) { startMode(rnd(0, 1) ? (uint8_t)M_YAWN : (uint8_t)M_IDLE, now, 2300); fixed = false; }
       break;
@@ -703,6 +818,26 @@ void WolfScene::updateEvent(uint32_t now, uint32_t dt, uint8_t stage, int rw) {
 }
 
 void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
+  // a pool of mud or water stays for a while after it was used
+  if (_pool.active) {
+    if ((int32_t)(now - _pool.until) >= 0) _pool.active = false;
+    else {
+      int x0 = _pool.x - _pool.w / 2, x1 = _pool.x + _pool.w / 2;
+      for (int k = 0; k < 4; k++) {
+        int y = GROUND_Y + 1 + k, ins = k * 3;
+        if (y > 63) break;
+        if (k == 0) { d.fillRect(x0, y, x1 - x0, 1); continue; }
+        for (int x = x0 + ins; x < x1 - ins; x += 2) {
+          if (_pool.kind == 1) d.fillRect(x + (int)(((now / 420) + k) & 1), y, 1, 1);       // shimmering water
+          else if (((x + k) & 1) == 0 || ((x * 7 + k * 3) % 5) == 0) d.fillRect(x, y, 1, 1);  // thick mud
+        }
+      }
+      if (_pool.kind == 0 && (((now / 500) + _pool.x) % 3) == 0) {                        // a mud bubble pops
+        int bx = x0 + 6 + (int)((now / 500 * 7) % (uint32_t)(_pool.w - 12));
+        d.fillRect(bx, GROUND_Y, 1, 1);
+      }
+    }
+  }
   // the hole stays after the digging is done
   if (_hole.active) {
     if ((int32_t)(now - _hole.until) >= 0) _hole.active = false;
@@ -809,6 +944,47 @@ void WolfScene::drawEventProps(DisplayDriver& d, uint32_t now, int rw, int ch) {
         int dx = -a.dir * (int)(t * 18 / 520);
         int dy = -arc(t, 520, 9);
         d.fillRect(_hole.x + dx - a.dir * 2, GROUND_Y - 1 + dy, 1, 1);
+      }
+      break;
+    }
+    case M_WALLOW: {                       // mud flying while it rolls, then drops shaken off
+      if (_ev.phase == 2) {
+        for (int i = 0; i < 7; i++) {
+          uint32_t t = (e + i * 131) % 600;
+          int dx = (int)((i * 37) % (uint32_t)(rw + 10)) - 5;
+          d.fillRect(wx + dx, GROUND_Y - 2 - arc(t, 600, 9), 1, 1);
+        }
+      } else if (_ev.phase == 3) {
+        for (int i = 0; i < 8; i++) {
+          uint32_t ph = ((now - _ev.pt0) / 110 + i * 5) * 2654435761u;
+          int dx = (int)((ph >> 8) % (uint32_t)(rw + 16)) - 8;
+          d.fillRect(wx + dx, GROUND_Y - ch + 8 + (int)((ph >> 20) % 14), 1, 1);
+        }
+      }
+      break;
+    }
+    case M_SWIM: {                         // ripples round the head, a bubble now and then
+      if (_ev.phase >= 2) {
+        int nose = a.dir > 0 ? wx + rw - 4 : wx + 3;
+        int ph = (int)((now / 220) % 4);
+        for (int r = 0; r < 2; r++) {
+          int w2 = 4 + ((ph + r * 2) % 4) * 2;
+          d.fillRect(nose - w2 / 2, GROUND_Y + 1, w2, 1);
+        }
+        if (((now / 300) % 5) == 0) d.fillRect(nose + (a.dir > 0 ? 3 : -3), GROUND_Y - 3 - (int)((now / 100) % 4), 1, 1);
+      }
+      break;
+    }
+    case M_SNAP: {
+      int mouth = a.dir > 0 ? wx + rw - 2 : wx + 1;
+      if (_ev.phase == 1 && _ev.show) {                    // the fish leaps toward the open jaws
+        uint32_t t = now - _ev.pt0;
+        int fx = mouth + a.dir * (18 - (int)(14 * t / 850)) - (a.dir > 0 ? 0 : FISH_R_W);
+        int fy = GROUND_Y - FISH_R_H - arc(t, 1700, 13);
+        d.drawXbm(fx, fy, a.dir > 0 ? fish_r : fish_l, FISH_R_W, FISH_R_H);
+      }
+      if (_ev.phase == 2) {
+        d.drawTextCentered(hx < 22 ? 22 : (hx > SCREEN_W - 22 ? SCREEN_W - 22 : hx), GROUND_Y - ch - 4 < 10 ? 10 : GROUND_Y - ch - 4, "CHOMP!");
       }
       break;
     }
@@ -961,7 +1137,7 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   for (int x = 0; x < SCREEN_W; x += 2) d.fillRect(x, GROUND_Y + 1, 1, 1);
 
   // treat
-  if (_treat.active) d.drawXbm(_treat.x16 / 16, _treat.y16 / 16, bone_bits, 9, 4);
+  if (_treat.active) d.drawXbm(_treat.x16 / 16, _treat.y16 / 16 - (TREAT_H - 4), TREAT_BM, TREAT_W, TREAT_H);
 
   // play: hops and play-bows once two wolves know each other
   int hop_r = 0, hop_v = 0;
@@ -980,6 +1156,7 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
   // visitor (drawn first so the resident is on top)
   if (_vphase != V_NONE && vw) {
     WolfPose vp;
+    vp.sub = 0; vp.lie = 0; vp.blink = false;
     vp.head = bow ? 1 : 0;
     vp.legs = (_v.moving && !bow) ? (uint8_t)(1 + _v.legf) : 0;
     vp.tail = (playing || _vphase != V_STAY) ? _v.tailf : _v.tailf;
@@ -996,6 +1173,7 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
     p.legs = 0;
     p.head = 0;
     p.lie = 0;
+    p.sub = 0;
     p.blink = (((now / 100) % 37) == 0);      // an occasional blink
     int lift = 0, shake = 0;
     switch (_w.mode) {
@@ -1039,6 +1217,26 @@ int WolfScene::render(DisplayDriver& d, uint32_t now, uint16_t batt_mv) {
         if (_ev.phase == 3) { p.legs = 2; lift = arc(now - _ev.pt0, 420, 13); }
         if (_ev.phase == 4) p.head = 1;
         break;
+      case M_WALLOW:
+        if (_ev.phase == 1) p.legs = _w.moving ? 1 + _w.legf : 0;
+        if (_ev.phase == 2) { p.lie = 1; p.sub = 2; p.blink = (((now - _w.t0) / 700) & 1); }
+        if (_ev.phase == 3) { shake = (((now - _ev.pt0) / 60) & 1) ? 1 : -1; p.blink = true; }
+        break;
+      case M_SWIM: {
+        p.legs = _w.moving ? 1 + _w.legf : 0;
+        int full = A.ch - A.body.y - 5; if (full < 4) full = 4;
+        uint32_t t = now - _ev.pt0;
+        if (_ev.phase == 2) p.sub = (uint8_t)(t >= 1100 ? full : full * t / 1100);
+        else if (_ev.phase == 3) { p.sub = (uint8_t)full; if (((now / 600) & 1)) p.sub = (uint8_t)(full > 5 ? full - 1 : full); }
+        else if (_ev.phase == 4) p.sub = (uint8_t)(t >= 1000 ? 0 : full - full * t / 1000);
+        break;
+      }
+      case M_SNAP: {
+        uint32_t t = now - _ev.pt0;
+        if (_ev.phase == 1) p.head = t > 520 ? 3 : 0;
+        else if (_ev.phase == 2) { p.head = (t / 240) & 1 ? 2 : 3; p.blink = t > 800; }
+        break;
+      }
       case M_BARK: {
         uint32_t e = now - _w.t0;
         if (e < 500) p.head = 2;

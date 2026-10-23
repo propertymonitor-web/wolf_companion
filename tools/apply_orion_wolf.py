@@ -57,6 +57,44 @@ patch(os.path.join(ui, "UITask.cpp"), [
      "void UITask::onControlDataRecv(const mesh::Packet* packet) {\n  if (wolf) wolf->onControl(packet->payload, packet->payload_len);\n"),
     ("shutdown", "void UITask::shutdown(bool restart){\n", "void UITask::shutdown(bool restart){\n  if (wolf) wolf->save();\n"),
     ("loop", "void UITask::loop() {\n  char c = 0;\n", "void UITask::loop() {\n  char c = 0;\n  if (wolf) wolf->loop();\n"),
+    ("splash next", "    if (millis() >= dismiss_after) {\n      _task->gotoHomeScreen();",
+     "    if (millis() >= dismiss_after) {\n      _task->gotoAfterSplash();"),
+    ("inspired screen", "class HomeScreen : public UIScreen {",
+     '''#if PET_SPLASH
+// "INSPIRED BY" card, shown for 5 seconds after the ORION splash (alligator and crocodile only)
+class InspiredScreen : public UIScreen {
+  UITask* _task;
+  unsigned long _until;
+public:
+  InspiredScreen(UITask* task) : _task(task) { _until = millis() + 5000; }
+  int render(DisplayDriver& d) override {
+    d.setColor(UIColor::primary_txt);
+    d.setTextSize(1);
+    int w = d.width();
+    d.fillRect(16, 14, w - 32, 1);
+    d.drawTextCentered(w / 2, 22, "INSPIRED BY:");
+    d.drawTextCentered(w / 2, 36, "PAT STEINHAUER-SCATES");
+    d.fillRect(16, 50, w - 32, 1);
+    return 1000;
+  }
+  void poll() override {
+    if ((long)(millis() - _until) >= 0) _task->gotoHomeScreen();
+  }
+};
+#endif
+
+class HomeScreen : public UIScreen {'''),
+    ("showWolf", "  bool onWolfPage() const { return _page == HomePage::WOLF; }\n",
+     "  bool onWolfPage() const { return _page == HomePage::WOLF; }\n  void showWolf() { _page = HomePage::WOLF; }\n"),
+    ("triple click", '  MESH_DEBUG_PRINTLN("UITask: triple click triggered");\n  checkDisplayOn(c);\n  toggleBuzzer();\n',
+     '''  MESH_DEBUG_PRINTLN("UITask: triple click triggered");
+  checkDisplayOn(c);
+  if (!wolfPageActive()) {      // a quick triple click from any other screen goes straight back to the pet
+    gotoWolfScreen();
+    return 0;
+  }
+  toggleBuzzer();
+'''),
     ("auto off", "    if (millis() > _auto_off) {\n      _display->turnOff();",
      "    if (millis() > _auto_off && !wolfPageActive()) {   // the wolf screen never times out\n      _display->turnOff();"),
     ("double click", '  MESH_DEBUG_PRINTLN("UITask: double-click triggered");\n  checkDisplayOn(c);\n  return c;\n}\n',
@@ -77,6 +115,21 @@ int UITask::renderWolf(DisplayDriver& display) {
   return wolf ? wolf->render(display, getBattMilliVolts()) : 1000;
 }
 
+void UITask::gotoAfterSplash() {
+#if PET_SPLASH
+  setCurrScreen(new InspiredScreen(this));
+#else
+  gotoHomeScreen();
+#endif
+}
+
+void UITask::gotoWolfScreen() {
+  if (home == NULL) return;
+  ((HomeScreen *) home)->showWolf();
+  setCurrScreen(home);
+  _next_refresh = 0;
+}
+
 void UITask::wolfNextWolf() {
   if (!wolf) return;
   char desc[32];
@@ -93,6 +146,6 @@ patch(os.path.join(ui, "UITask.h"), [
     ("member", "  UIScreen* curr;\n", "  UIScreen* curr;\n  WolfModule* wolf;\n"),
     ("init", "    curr = NULL;\n", "    curr = NULL;\n    wolf = NULL;\n"),
     ("methods", "  bool isButtonPressed() const;\n",
-     "  bool isButtonPressed() const;\n\n  // wolf pet\n  bool wolfPageActive() const;           // true while the wolf screen is showing\n  int  renderWolf(DisplayDriver& display);\n  void wolfNextWolf();\n"),
+     "  bool isButtonPressed() const;\n\n  // wolf pet\n  bool wolfPageActive() const;           // true while the wolf screen is showing\n  int  renderWolf(DisplayDriver& display);\n  void wolfNextWolf();\n  void gotoAfterSplash();\n  void gotoWolfScreen();\n"),
 ])
 print("wolf added")

@@ -49,7 +49,7 @@
 #define WOLF_PKT_BRED            0x1
 #define WOLF_PKT_ACK             0x2
 #define WOLF_PKT_PING            0x3
-#define WOLF_PKT_VERSION         2
+#define WOLF_PKT_VERSION         PET_PKT_VER
 
 enum WolfStageId : uint8_t { STAGE_PUP = 0, STAGE_JUVENILE = 1, STAGE_ADULT = 2 };
 

@@ -163,6 +163,50 @@ def bee(frame):
     ell(d, 9.8, 4.2, 0.3, 0.3, 0)
     return fin(im, w, h)
 
+# --------------------------------------------------------------- chick ----
+def chick_sit():
+    w, h = 9, 8
+    im, d = canvas(w, h)
+    ell(d, 4.0, 5.2, 3.2, 2.6)                    # fluffy body
+    ell(d, 6.6, 3.0, 1.9, 1.8)                    # head
+    poly(d, [(8.0, 3.0), (9.4, 3.5), (8.0, 4.0)])   # beak
+    ell(d, 7.0, 2.6, 0.35, 0.35, 0)
+    d.line((P(3.6), P(7.5), P(3.6), P(8.4)), fill=255, width=P(1) // 2)
+    return fin(im, w, h)
+
+
+def chick_hop():
+    w, h = 10, 8
+    im, d = canvas(w, h)
+    ell(d, 4.0, 4.0, 3.2, 2.5)
+    ell(d, 7.0, 2.6, 1.9, 1.7)
+    poly(d, [(8.4, 2.6), (9.9, 3.1), (8.4, 3.6)])
+    poly(d, [(1.5, 3.0), (0.0, 1.4), (2.0, 2.6)])  # wing flap
+    ell(d, 7.4, 2.2, 0.35, 0.35, 0)
+    d.line((P(3.0), P(6.2), P(2.2), P(7.8)), fill=255, width=P(1) // 2)
+    d.line((P(4.6), P(6.2), P(5.4), P(7.8)), fill=255, width=P(1) // 2)
+    return fin(im, w, h)
+
+
+def fish():
+    w, h = 11, 6
+    im, d = canvas(w, h)
+    ell(d, 5.5, 3.0, 4.0, 2.0)
+    poly(d, [(1.8, 3.0), (-0.2, 0.2), (-0.2, 5.8)])            # tail fin
+    poly(d, [(4.5, 1.2), (6.0, 0.0), (6.5, 1.3)])              # dorsal
+    ell(d, 8.2, 2.6, 0.4, 0.4, 0)
+    return fin(im, w, h)
+
+
+def apple():
+    w, h = 7, 7
+    im, d = canvas(w, h)
+    ell(d, 2.4, 4.3, 2.3, 2.5); ell(d, 4.6, 4.3, 2.3, 2.5)
+    d.line((P(3.5), P(1.8), P(4.2), P(0.2)), fill=255, width=P(1) // 2)
+    poly(d, [(4.2, 0.9), (6.4, 0.2), (5.4, 1.8)])             # leaf
+    return fin(im, w, h)
+
+
 # ---------------------------------------------------------------- moon ----
 def moon():
     w, h = 13, 13
@@ -212,6 +256,9 @@ def main(path):
         emit("fly%d" % f, butterfly(f), out)
     for n, im in [("mouse_sit", mouse_sit()), ("mouse_run", mouse_run()), ("frog_sit", frog_sit()), ("frog_hop", frog_hop())]:
         emit(n + "_r", im, out); emit(n + "_l", flip(im), out)
+    for n, im in [("chick_sit", chick_sit()), ("chick_hop", chick_hop()), ("fish", fish())]:
+        emit(n + "_r", im, out); emit(n + "_l", flip(im), out)
+    emit("apple", apple(), out)
     for f in range(2):
         emit("bee%d" % f, bee(f), out)
     emit("moon", moon(), out)

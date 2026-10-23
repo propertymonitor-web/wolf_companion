@@ -69,6 +69,7 @@ struct WolfPose {
   bool    mirror;  // true = facing left
   uint8_t lie;     // 1 = lying down (zero when brace-initialised with fewer values)
   bool    blink;   // eyes closed
+  uint8_t sub;     // sunk into water / mud: this many rows below the ground line (and cut off)
 };
 
 // Draws one wolf into the display.  (x, ground_y) = left edge of the sprite canvas and the row the
@@ -79,7 +80,7 @@ class WolfScene {
 public:
   explicit WolfScene(WolfGame* game);
 
-  enum { EV_COUNT = 14 };
+  enum { EV_COUNT = 17 };
   uint8_t debugMode() const { return _w.mode; }
   int8_t  debugDir() const { return _w.dir; }
   void forceEvent(uint8_t kind) { _force = kind + 1; }     // for tests: start this activity at the next frame
@@ -91,7 +92,7 @@ private:
   enum Mode : uint8_t { M_IDLE, M_WALK, M_SEEK, M_EAT, M_HAPPY, M_BARK, M_GREET, M_LEAVE, M_AWAY, M_RETURN,
                         // random things a wolf does (one per EvKind, in the same order)
                         M_BUNNY, M_BIRD, M_FLY, M_DIG, M_SLEEP, M_REST, M_HOWL, M_SHAKE, M_YAWN, M_CHASE,
-                        M_SNIFF, M_STRETCH, M_ZOOM, M_POUNCE };
+                        M_SNIFF, M_STRETCH, M_ZOOM, M_POUNCE, M_WALLOW, M_SWIM, M_SNAP };
   enum VPhase : uint8_t { V_NONE, V_ENTER, V_STAY, V_LEAVE };
 
   struct Actor {
@@ -122,6 +123,8 @@ private:
   // random activities
   struct Ev { uint8_t phase; uint32_t pt0; int32_t px16, py16; int16_t vx, vy; int8_t pdir; uint8_t frame; bool show; uint32_t aux, aux2; };
   struct Hole { bool active; int x; uint8_t depth; uint32_t until; };
+  struct Pool { bool active; uint8_t kind; int x, w; uint32_t until; };   // kind 0 = mud, 1 = water
+  Pool      _pool;
   Ev        _ev;
   Hole      _hole;
   uint8_t   _last_ev, _force, _stage;

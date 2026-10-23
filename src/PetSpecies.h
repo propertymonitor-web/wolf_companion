@@ -5,14 +5,18 @@
 // says, and how likely each activity is.
 
 #define PET_EV_BUNNY   0     // activity numbers (must match WolfScene.cpp)
-#define PET_EV_COUNT   14
+#define PET_EV_COUNT   17
+#define PET_PKT_VER    2     // packet version byte; also tells species within one family apart
+#define PET_TREAT      0     // 0 bone, 1 apple, 2 fish
+#define PET_SPLASH     0     // 1 = show the 'INSPIRED BY' card after the ORION splash
+#define PET_WALLOW     0     // activities only some pets can do (weights below are 0 for the rest)
 #define PET_MIN_SHADE  0     // lowest coat density (bears are never hollow)
 #define PET_INSECT     0     // 1 = an insect (own scene, own life cycle)
 #define PET_HIDDEN_FROM 0    // months during which the pet stays put (a chrysalis does not go visiting)
 #define PET_HIDDEN_TO   0
 
 // weights, per growth stage (pup, adolescent, adult), for the 14 activities in this order:
-//  prey-visit  bird  flyer  dig  sleep  rest  call  shake  yawn  chase-tail  sniff  stretch  zoomies  pounce
+//  prey-visit  bird  flyer  dig  sleep  rest  call  shake  yawn  chase-tail  sniff  stretch  zoomies  pounce  wallow  swim  snap
 
 #if defined(PET_FOX)
   #define PET_ID            1
@@ -27,9 +31,9 @@
   #define PET_PREY          0          // 0 rabbit, 1 mouse, 2 frog
   #define PET_FLYER         0          // 0 butterfly, 1 bee
   #define PET_WEIGHTS { \
-    { 2, 2, 2, 2, 4, 1, 1, 2, 2, 3, 2, 2, 4, 4 }, \
-    { 2, 2, 2, 3, 3, 1, 2, 2, 2, 2, 2, 2, 3, 4 }, \
-    { 2, 2, 1, 3, 3, 2, 3, 2, 2, 1, 3, 2, 1, 5 } }
+    { 2, 2, 2, 2, 4, 1, 1, 2, 2, 3, 2, 2, 4, 4, 0, 0, 0 }, \
+    { 2, 2, 2, 3, 3, 1, 2, 2, 2, 2, 2, 2, 3, 4, 0, 0, 0 }, \
+    { 2, 2, 1, 3, 3, 2, 3, 2, 2, 1, 3, 2, 1, 5, 0, 0, 0 } }
 #elif defined(PET_CAT)
   #define PET_ID            2
   #define PET_NAME          "cat"
@@ -43,9 +47,9 @@
   #define PET_PREY          1
   #define PET_FLYER         0
   #define PET_WEIGHTS { \
-    { 2, 2, 3, 0, 5, 3, 1, 1, 3, 4, 2, 3, 4, 4 }, \
-    { 2, 2, 3, 0, 4, 3, 1, 1, 3, 3, 2, 3, 3, 4 }, \
-    { 2, 2, 2, 0, 4, 4, 1, 1, 3, 1, 2, 3, 2, 5 } }
+    { 2, 2, 3, 0, 5, 3, 1, 1, 3, 4, 2, 3, 4, 4, 0, 0, 0 }, \
+    { 2, 2, 3, 0, 4, 3, 1, 1, 3, 3, 2, 3, 3, 4, 0, 0, 0 }, \
+    { 2, 2, 2, 0, 4, 4, 1, 1, 3, 1, 2, 3, 2, 5, 0, 0, 0 } }
 #elif defined(PET_BEAR)
   #define PET_ID            3
   #define PET_NAME          "bear"
@@ -61,9 +65,77 @@
   #define PET_PREY          2
   #define PET_FLYER         1
   #define PET_WEIGHTS { \
-    { 3, 1, 4, 2, 4, 2, 1, 2, 2, 3, 3, 2, 2, 0 }, \
-    { 3, 1, 4, 3, 3, 2, 1, 2, 2, 2, 3, 2, 1, 0 }, \
-    { 3, 1, 3, 4, 3, 3, 2, 2, 3, 1, 4, 2, 0, 0 } }
+    { 3, 1, 4, 2, 4, 2, 1, 2, 2, 3, 3, 2, 2, 0, 0, 0, 0 }, \
+    { 3, 1, 4, 3, 3, 2, 1, 2, 2, 2, 3, 2, 1, 0, 0, 0, 0 }, \
+    { 3, 1, 3, 4, 3, 3, 2, 2, 3, 1, 4, 2, 0, 0, 0, 0, 0 } }
+#elif defined(PET_GATOR)
+  #define PET_ID            5
+  #define PET_NAME          "alligator"
+  #define PET_PKT_TYPE      0xF0
+  #undef  PET_MIN_SHADE
+  #define PET_MIN_SHADE     2
+  #undef  PET_SPLASH
+  #define PET_SPLASH        1
+  #undef  PET_TREAT
+  #define PET_TREAT         2
+  #define PET_STATE_FILE    "/pet_gator"
+  #define PET_ART           "WolfArt_gator.h"
+  #define PET_BARK_TEXT     "HISSS!"
+  #define PET_CALL_PUP      "chirp~"
+  #define PET_CALL_ADULT    "BELLOW!"
+  #define PET_CALL_MOON     0
+  #define PET_PREY          2
+  #define PET_FLYER         0
+  #define PET_WEIGHTS { \
+    { 3, 3, 2, 1, 4, 3, 1, 1, 2, 2, 2, 2, 2, 1, 0, 4, 3 }, \
+    { 3, 3, 2, 1, 4, 4, 1, 1, 2, 1, 2, 2, 1, 2, 0, 5, 4 }, \
+    { 3, 3, 1, 1, 4, 5, 2, 1, 2, 0, 2, 2, 1, 2, 0, 5, 4 } }
+#elif defined(PET_CROC)
+  #define PET_ID            6
+  #define PET_NAME          "crocodile"
+  #define PET_PKT_TYPE      0xF0
+  #undef  PET_PKT_VER
+  #define PET_PKT_VER       3
+  #undef  PET_MIN_SHADE
+  #define PET_MIN_SHADE     1
+  #undef  PET_SPLASH
+  #define PET_SPLASH        1
+  #undef  PET_TREAT
+  #define PET_TREAT         2
+  #define PET_STATE_FILE    "/pet_croc"
+  #define PET_ART           "WolfArt_croc.h"
+  #define PET_BARK_TEXT     "SNAP!"
+  #define PET_CALL_PUP      "yelp~"
+  #define PET_CALL_ADULT    "GRAAWR!"
+  #define PET_CALL_MOON     0
+  #define PET_PREY          2
+  #define PET_FLYER         1
+  #define PET_WEIGHTS { \
+    { 3, 2, 2, 1, 4, 3, 1, 1, 2, 2, 2, 2, 3, 3, 0, 4, 4 }, \
+    { 3, 2, 2, 1, 3, 4, 1, 1, 2, 1, 2, 2, 2, 4, 0, 5, 5 }, \
+    { 3, 2, 1, 1, 3, 5, 2, 1, 2, 0, 2, 2, 1, 4, 0, 5, 5 } }
+#elif defined(PET_PIG)
+  #define PET_ID            7
+  #define PET_NAME          "pig"
+  #define PET_PKT_TYPE      0xF0
+  #undef  PET_PKT_VER
+  #define PET_PKT_VER       4
+  #undef  PET_TREAT
+  #define PET_TREAT         1
+  #undef  PET_MIN_SHADE
+  #define PET_MIN_SHADE     1
+  #define PET_STATE_FILE    "/pet_pig"
+  #define PET_ART           "WolfArt_pig.h"
+  #define PET_BARK_TEXT     "OINK!"
+  #define PET_CALL_PUP      "oink~"
+  #define PET_CALL_ADULT    "OINK OINK!"
+  #define PET_CALL_MOON     0
+  #define PET_PREY          3
+  #define PET_FLYER         1
+  #define PET_WEIGHTS { \
+    { 3, 1, 3, 3, 4, 2, 1, 2, 2, 4, 3, 2, 4, 0, 5, 0, 0 }, \
+    { 3, 1, 3, 4, 3, 2, 1, 2, 2, 3, 3, 2, 3, 0, 5, 0, 0 }, \
+    { 3, 1, 2, 4, 3, 3, 2, 2, 2, 1, 4, 2, 1, 0, 6, 0, 0 } }
 #elif defined(PET_BUTTERFLY)
   #undef  PET_INSECT
   #define PET_INSECT        1
@@ -82,7 +154,7 @@
   #define PET_CALL_MOON     0
   #define PET_PREY          0
   #define PET_FLYER         0
-  #define PET_WEIGHTS { {1,1,1,1,1,1,1,1,1,1,1,1,1,1}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1} }
+  #define PET_WEIGHTS { {1,1,1,1,1,1,1,1,1,1,1,1,1,1, 0, 0, 0 }, {1,1,1,1,1,1,1,1,1,1,1,1,1,1, 0, 0, 0 }, {1,1,1,1,1,1,1,1,1,1,1,1,1,1, 0, 0, 0 } }
 #else                                    // the wolf
   #define PET_ID            0
   #define PET_NAME          "wolf"
@@ -96,7 +168,7 @@
   #define PET_PREY          0
   #define PET_FLYER         0
   #define PET_WEIGHTS { \
-    { 3, 2, 3, 2, 4, 1, 1, 2, 2, 4, 2, 2, 4, 0 }, \
-    { 3, 2, 3, 3, 3, 1, 2, 2, 2, 3, 2, 2, 3, 0 }, \
-    { 3, 2, 2, 3, 3, 2, 3, 2, 2, 1, 3, 2, 1, 0 } }
+    { 3, 2, 3, 2, 4, 1, 1, 2, 2, 4, 2, 2, 4, 0, 0, 0, 0 }, \
+    { 3, 2, 3, 3, 3, 1, 2, 2, 2, 3, 2, 2, 3, 0, 0, 0, 0 }, \
+    { 3, 2, 2, 3, 3, 2, 3, 2, 2, 1, 3, 2, 1, 0, 0, 0, 0 } }
 #endif

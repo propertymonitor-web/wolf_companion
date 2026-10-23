@@ -14,7 +14,7 @@ on:
         description: "Which pet"
         type: choice
         default: wolf
-        options: [wolf, fox, cat, bear, butterfly]
+        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig]
       meshcore_ref:
         description: "MeshCore commit to build on"
         type: string
@@ -69,9 +69,13 @@ jobs:
 
       - name: Build firmware
         env:
-          PLATFORMIO_BUILD_FLAGS: -DNOVA_ORION=1 -DPET_${{ inputs.species == 'wolf' && 'WOLF' || inputs.species == 'fox' && 'FOX' || inputs.species == 'cat' && 'CAT' || inputs.species == 'bear' && 'BEAR' || 'BUTTERFLY' }}=1 ${{ inputs.units == 'mph' && '-DNOVA_MPH=1' || '' }}
+          SPECIES: ${{ inputs.species }}
+          UNITS: ${{ inputs.units }}
         run: |
           set -o pipefail
+          SP=$(echo "$SPECIES" | tr a-z A-Z)
+          export PLATFORMIO_BUILD_FLAGS="-DNOVA_ORION=1 -DPET_$SP=1 $([ "$UNITS" = mph ] && echo -DNOVA_MPH=1)"
+          echo "flags: $PLATFORMIO_BUILD_FLAGS"
           pip install platformio
           cd mc
           pio run -e "$PIO_ENV" -t mergebin 2>&1 | tee ../build.log
