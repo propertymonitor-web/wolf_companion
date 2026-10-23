@@ -7,7 +7,7 @@ SPECIES = [  # (PET_ID, flag or None for the wolf, file stem, namespace, insect?
     (0, None, "Wolf"), (1, "PET_FOX", "Fox"), (2, "PET_CAT", "Cat"), (3, "PET_BEAR", "Bear"), (4, "PET_BUTTERFLY", "Butterfly"),
     (5, "PET_GATOR", "Gator"), (6, "PET_CROC", "Croc"), (7, "PET_PIG", "Pig"), (8, "PET_DONKEY", "Donkey"),
     (9, "PET_UNICORN", "Unicorn"), (10, "PET_DRAGON", "Dragon"), (11, "PET_KITSUNE", "Kitsune"),
-    (12, "PET_GRIFFIN", "Griffin"), (13, "PET_PHOENIX", "Phoenix")]
+    (12, "PET_GRIFFIN", "Griffin"), (13, "PET_PHOENIX", "Phoenix"), (14, "PET_HORSE", "Horse")]
 here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
 for pid, flag, stem in SPECIES:
     ns = "pet_" + stem.lower()

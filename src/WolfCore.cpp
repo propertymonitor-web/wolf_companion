@@ -1,29 +1,52 @@
 #include "WolfCore.h"
 #include <stdio.h>
 
+#if PET_MYST
+#define WOLF_FILE_VER 3          // the mystery build also saves each pet's species; files of version 2 still load
+#else
 #define WOLF_FILE_VER 2
+#endif
 #define WOLF_STATE_MAX 640
 
-#if PET_MYST
-uint8_t g_mystery_sp = 0;
 // species table, indexed by PET_ID.  (type, version) are the same as the single-pet firmware of that species,
-// so a hatched mystery pet and an ordinary one are friends.
+// so every kind of pet can recognise every other kind (and a hatched mystery pet and an ordinary one are friends).
 struct PetRow { const char* name; uint8_t type, ver, hfrom, hto; };
-static const PetRow kPets[14] = {
+static const PetRow kPets[WOLF_SPECIES_COUNT] = {
   { "wolf", 0xA0, 2, 0, 0 }, { "fox", 0xB0, 2, 0, 0 }, { "cat", 0xC0, 2, 0, 0 }, { "bear", 0xD0, 2, 0, 0 },
   { "butterfly", 0xE0, 2, 6, 9 }, { "alligator", 0xF0, 2, 0, 0 }, { "crocodile", 0xF0, 3, 0, 0 }, { "pig", 0xF0, 4, 0, 0 },
   { "donkey", 0xF0, 5, 0, 0 }, { "unicorn", 0xF0, 6, 0, 0 }, { "dragon", 0xF0, 7, 0, 0 }, { "kitsune", 0xF0, 8, 0, 0 },
-  { "griffin", 0xF0, 9, 0, 0 }, { "phoenix", 0xF0, 10, 0, 0 } };
-static const PetRow& petRow(uint8_t sp) { return kPets[sp < 14 ? sp : 0]; }
+  { "griffin", 0xF0, 9, 0, 0 }, { "phoenix", 0xF0, 10, 0, 0 }, { "horse", 0xF0, 11, 0, 0 } };
+static const PetRow& petRow(uint8_t sp) { return kPets[sp < WOLF_SPECIES_COUNT ? sp : 0]; }
 uint8_t petPktType(uint8_t sp) { return petRow(sp).type; }
 uint8_t petPktVer(uint8_t sp) { return petRow(sp).ver; }
 uint8_t petHiddenFrom(uint8_t sp) { return petRow(sp).hfrom; }
 uint8_t petHiddenTo(uint8_t sp) { return petRow(sp).hto; }
 const char* petNameOf(uint8_t sp) { return petRow(sp).name; }
-// which pet is inside the egg: a well-mixed hash of the radio's identity, so it is the same after every reboot
+uint8_t petSpeciesFromPkt(uint8_t type, uint8_t ver) {
+  for (uint8_t i = 0; i < WOLF_SPECIES_COUNT; i++) if (kPets[i].type == type && kPets[i].ver == ver) return i;
+  return 0xFF;
+}
+#if PET_MYST
+uint8_t g_mystery_sp = 0;
+// which pet is inside the egg: a well-mixed hash of the radio's identity, so it is the same after every reboot.
+// (Only the first 14 pets can be in an egg; this must never change, or eggs already incubating would change.)
 uint8_t petPickSpecies(uint32_t id) {
   uint32_t x = id ^ 0xA5F152C3u; x ^= x >> 16; x *= 0x45D9F3Bu; x ^= x >> 16; x *= 0x45D9F3Bu; x ^= x >> 16;
   return (uint8_t)(x % 14u);
+}
+// the rare, unannounced exception: some different pets CAN have young together, and the young are something new.
+// Only a mystery-egg radio can carry the result, because it is the only firmware that has every pet's pictures.
+uint8_t petHybrid(uint8_t a, uint8_t b) {
+  static const uint8_t kPairs[][3] = {   // a, b, young
+    { 1, 2, 11 },    // fox + cat           -> kitsune
+    { 8, 14, 9 },    // donkey + horse      -> unicorn
+    { 5, 6, 10 },    // alligator + croc    -> dragon
+    { 2, 4, 13 },    // cat + butterfly     -> phoenix
+    { 0, 3, 12 },    // wolf + bear         -> griffin
+  };
+  for (unsigned i = 0; i < sizeof(kPairs) / sizeof(kPairs[0]); i++)
+    if ((kPairs[i][0] == a && kPairs[i][1] == b) || (kPairs[i][0] == b && kPairs[i][1] == a)) return kPairs[i][2];
+  return 0xFF;
 }
 #endif
 
@@ -246,7 +269,8 @@ bool WolfGame::addWolf(const Wolf& w) {
   return true;
 }
 
-void WolfGame::makePregnant(Wolf& m, uint32_t father) {
+void WolfGame::makePregnant(Wolf& m, uint32_t father, uint8_t child_kind) {
+  m.child_kind = child_kind;
   m.preg_secs_left = WOLF_GESTATION_MONTHS * WOLF_SECS_PER_MONTH;
   m.father_genome = father;
   m.litter = (uint8_t)rnd(1, 3);
@@ -259,6 +283,8 @@ void WolfGame::giveBirth(Wolf& mother) {
   int first_new = -1;
   uint8_t n = mother.litter ? mother.litter : 1;
   uint32_t father = mother.father_genome, mg = mother.genome;
+  uint8_t ckind = mother.child_kind ? mother.child_kind : mother.kind;   // the young are the mother's own kind, unless something new was born
+  mother.child_kind = 0;
   mother.preg_secs_left = 0;
   mother.litter = 0;
   mother.cooldown_secs = WOLF_COOLDOWN_MONTHS * WOLF_SECS_PER_MONTH;
@@ -269,6 +295,7 @@ void WolfGame::giveBirth(Wolf& mother) {
     c.sex = (uint8_t)rnd(0, 1);
     c.sire = father;
     c.dam = mg;
+    c.kind = ckind;
     c.visits_needed = rollNeed();
     int before = count;
     if (addWolf(c)) {
@@ -283,6 +310,26 @@ void WolfGame::giveBirth(Wolf& mother) {
     _h->alert(msg);
   }
   _dirty = true;
+}
+
+// may these two kinds of pet have young together?  Same kind always; different kinds only in the secret cases.
+bool WolfGame::canPair(uint8_t a, uint8_t b) {
+  if (a == b) return true;
+#if PET_MYST
+  return petHybrid(a, b) != 0xFF;
+#else
+  return false;
+#endif
+}
+
+// what will the young be?  0 = the mother's own kind, 1+ = species + 1 of something new, -1 = no young this time
+int WolfGame::youngKind(uint8_t mine, uint8_t theirs) {
+  if (mine == theirs) return 0;
+#if PET_MYST
+  uint8_t h = petHybrid(mine, theirs);
+  if (h != 0xFF && (int)rnd(1, 100) <= WOLF_HYBRID_PCT) return h + 1;
+#endif
+  return -1;
 }
 
 void WolfGame::cycleWolf() {
@@ -309,7 +356,15 @@ void WolfGame::onMessage() {
 }
 
 // ---------------------------------------------------------------- networking --
+// which of our pets is talking to this radio?  (matters in the mystery build, where the family can be mixed)
+static uint8_t pktSpeciesFor(const WolfGame& g, const WolfVisitor& v, bool trip_active, uint8_t trip_wolf, const uint8_t* trip_host, const uint8_t* target) {
+  if (trip_active && trip_wolf < g.count && trip_host && target && memcmp(trip_host, target, 4) == 0) return WolfGame::speciesOf(g.pack[trip_wolf]);
+  if (v.active && v.greeter < g.count) return WolfGame::speciesOf(g.pack[v.greeter]);
+  return (uint8_t)WOLF_MY_SPECIES;
+}
+
 void WolfGame::sendPing(const uint8_t* target, uint32_t now) {
+  _pkt_sp = pktSpeciesFor(*this, visitor, _trip.active, _trip.wolf, _trip.host, target);
   uint8_t p[10];
   p[0] = WOLF_PKT_TYPE | WOLF_PKT_PING;
   p[1] = WOLF_PKT_VERSION;
@@ -319,6 +374,7 @@ void WolfGame::sendPing(const uint8_t* target, uint32_t now) {
 }
 
 void WolfGame::sendBred(const uint8_t* target, uint32_t father, uint32_t mother) {
+  _pkt_sp = pktSpeciesFor(*this, visitor, _trip.active, _trip.wolf, _trip.host, target);
   uint8_t b[19];
   b[0] = WOLF_PKT_TYPE | WOLF_PKT_BRED;
   b[1] = WOLF_PKT_VERSION;
@@ -342,6 +398,7 @@ bool WolfGame::sendRequest(uint32_t now) {
   if (idx < 0) return false;
   _trip_idx = (uint8_t)(idx + 1);
   const Wolf& w = pack[idx];
+  _pkt_sp = speciesOf(w);
 
   uint8_t p[40];
   p[0] = WOLF_PKT_TYPE | WOLF_PKT_VISIT;
@@ -391,7 +448,9 @@ void WolfGame::endTrip(uint32_t now) {
 }
 
 void WolfGame::onPacket(const uint8_t* p, int len, uint32_t now) {
-  if (!p || len < 2 || (p[0] & 0xF0) != WOLF_PKT_TYPE || p[1] != WOLF_PKT_VERSION) return;
+  if (!p || len < 2) return;
+  _rx_sp = petSpeciesFromPkt(p[0] & 0xF0, p[1]);       // any kind of pet may visit, whatever kind we are
+  if (_rx_sp == 0xFF) return;
   switch (p[0] & 0x0F) {
     case WOLF_PKT_VISIT: handleRequest(p, len, now); break;
     case WOLF_PKT_ACK:   handleAck(p, len, now);     break;
@@ -441,7 +500,7 @@ void WolfGame::handleRequest(const uint8_t* p, int len, uint32_t now) {
   for (int i = 0; i < count; i++) if (pack[i].sire == genome) { gi = i; family = true; break; }   // his pups
   for (int i = 0; i < count && gi < 0; i++) {
     const Wolf& w = pack[i];
-    if (v_adult && isAdult(w) && w.sex != (v_male ? 0 : 1) && !w.preg_secs_left &&
+    if (v_adult && isAdult(w) && w.sex != (v_male ? 0 : 1) && !w.preg_secs_left && canPair(speciesOf(w), _rx_sp) &&
         !related(w.genome, w.sire, w.dam, genome, vsire, vdam)) gi = i;      // a possible mate
   }
   if (gi < 0) gi = current < count ? current : 0;
@@ -455,6 +514,7 @@ void WolfGame::handleRequest(const uint8_t* p, int len, uint32_t now) {
   visitor.genome = genome;
   visitor.sex = (flags & 1) ? 1 : 0;
   visitor.months = months;
+  visitor.species = _rx_sp;
   memcpy(visitor.owner, &p[2], 4);
   visitor.until_ms = now + secs * 1000UL;
   visitor.last_heard_ms = now;
@@ -468,6 +528,7 @@ void WolfGame::handleRequest(const uint8_t* p, int len, uint32_t now) {
 
   // answer: "come in, this wolf will greet you"
   uint8_t a[30];
+  _pkt_sp = speciesOf(G);
   a[0] = WOLF_PKT_TYPE | WOLF_PKT_ACK;
   a[1] = WOLF_PKT_VERSION;
   memcpy(&a[2], &p[2], 4);
@@ -487,7 +548,7 @@ void WolfGame::handleRequest(const uint8_t* p, int len, uint32_t now) {
 
   // courtship: we hold the female.  Needs adult + opposite sex + not related, and BOTH wolves
   // must have reached their own private visit threshold with each other.
-  if (G.sex == 1 && v_male && v_adult && isAdult(G) && !G.preg_secs_left && !G.cooldown_secs &&
+  if (G.sex == 1 && v_male && v_adult && isAdult(G) && !G.preg_secs_left && !G.cooldown_secs && canPair(speciesOf(G), _rx_sp) &&
       !related(G.genome, G.sire, G.dam, genome, vsire, vdam)) {
     bool mine_ok = visits >= G.visits_needed;
     bool his_ok = false;
@@ -496,8 +557,10 @@ void WolfGame::handleRequest(const uint8_t* p, int len, uint32_t now) {
       memcpy(&c, &p[22 + 4 * i], 4);
       if (c == G.genome) his_ok = true;
     }
-    if (mine_ok && his_ok && rnd(1, 100) <= WOLF_MATE_CHANCE_PCT) {
-      makePregnant(G, genome);
+    int young = -1;
+    if (mine_ok && his_ok && rnd(1, 100) <= WOLF_MATE_CHANCE_PCT) young = youngKind(speciesOf(G), _rx_sp);
+    if (young >= 0) {
+      makePregnant(G, genome, (uint8_t)young);
       visitor.until_ms += WOLF_MATE_EXTEND_SECS * 1000UL;
       sendBred(visitor.owner, genome, G.genome);
     }
@@ -536,12 +599,14 @@ void WolfGame::handleAck(const uint8_t* p, int len, uint32_t now) {
   sendPing(_trip.host, now);                              // "I'm coming" -- other hosts just time out
 
   bool g_male = !(flags & 1), g_adult = (flags & 2) != 0;
-  if (V.sex == 1 && g_male && g_adult && isAdult(V) && !V.preg_secs_left && !V.cooldown_secs &&
+  if (V.sex == 1 && g_male && g_adult && isAdult(V) && !V.preg_secs_left && !V.cooldown_secs && canPair(speciesOf(V), _rx_sp) &&
       !related(V.genome, V.sire, V.dam, greeter, gsire, gdam)) {
     bool mine_ok = visits >= V.visits_needed;
     bool his_ok = (flags & 8) != 0;
-    if (mine_ok && his_ok && rnd(1, 100) <= WOLF_MATE_CHANCE_PCT) {
-      makePregnant(V, greeter);
+    int young = -1;
+    if (mine_ok && his_ok && rnd(1, 100) <= WOLF_MATE_CHANCE_PCT) young = youngKind(speciesOf(V), _rx_sp);
+    if (young >= 0) {
+      makePregnant(V, greeter, (uint8_t)young);
       _trip.until_ms += WOLF_MATE_EXTEND_SECS * 1000UL;
       sendBred(_trip.host, greeter, V.genome);
     }
@@ -600,7 +665,8 @@ static uint16_t get16(const uint8_t*& p) { uint16_t v; memcpy(&v, p, 2); p += 2;
 int WolfGame::serialize(uint8_t* buf, int maxlen) const {
   uint8_t nmem = 0;
   for (int i = 0; i < WOLF_MEM_SIZE; i++) if (mem[i].visits) nmem++;
-  int need = 6 + count * 36 + 1 + nmem * 9;
+  const int rec = WOLF_FILE_VER >= 3 ? 38 : 36;
+  int need = 6 + count * rec + 1 + nmem * 9;
   if (maxlen < need) return -1;
   uint8_t* p = buf;
   *p++ = 'W'; *p++ = 'L'; *p++ = 'F'; *p++ = WOLF_FILE_VER;
@@ -612,6 +678,7 @@ int WolfGame::serialize(uint8_t* buf, int maxlen) const {
     put32(p, w.preg_secs_left); put32(p, w.father_genome); put32(p, w.cooldown_secs);
     put32(p, w.sire); put32(p, w.dam);
     put16(p, w.pups_born); put16(p, w.pups_sired);
+    if (WOLF_FILE_VER >= 3) { *p++ = w.kind; *p++ = w.child_kind; }
   }
   *p++ = nmem;
   for (int i = 0; i < WOLF_MEM_SIZE; i++) {
@@ -622,9 +689,12 @@ int WolfGame::serialize(uint8_t* buf, int maxlen) const {
 }
 
 bool WolfGame::deserialize(const uint8_t* buf, int len) {
-  if (len < 7 || buf[0] != 'W' || buf[1] != 'L' || buf[2] != 'F' || buf[3] != WOLF_FILE_VER) return false;
+  if (len < 7 || buf[0] != 'W' || buf[1] != 'L' || buf[2] != 'F') return false;
+  const uint8_t ver = buf[3];
+  if (ver != 2 && !(ver == 3 && WOLF_FILE_VER == 3)) return false;
+  const int rec = ver >= 3 ? 38 : 36;
   uint8_t n = buf[4], cur = buf[5];
-  if (n == 0 || n > WOLF_MAX_PACK || len < 6 + n * 36 + 1) return false;
+  if (n == 0 || n > WOLF_MAX_PACK || len < 6 + n * rec + 1) return false;
   const uint8_t* p = buf + 6;
   Wolf tmp[WOLF_MAX_PACK];
   memset(tmp, 0, sizeof(tmp));
@@ -636,6 +706,11 @@ bool WolfGame::deserialize(const uint8_t* buf, int len) {
     w.preg_secs_left = get32(p); w.father_genome = get32(p); w.cooldown_secs = get32(p);
     w.sire = get32(p); w.dam = get32(p);
     w.pups_born = get16(p); w.pups_sired = get16(p);
+    if (ver >= 3) {
+      w.kind = *p++; w.child_kind = *p++;
+      if (w.kind > WOLF_SPECIES_COUNT) w.kind = 0;
+      if (w.child_kind > WOLF_SPECIES_COUNT) w.child_kind = 0;
+    }
   }
   uint8_t nmem = *p++;
   if (nmem > WOLF_MEM_SIZE || len < (int)(p - buf) + nmem * 9) return false;

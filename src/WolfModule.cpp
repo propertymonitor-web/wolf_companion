@@ -95,7 +95,11 @@ size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
   return g_wolf_instance ? g_wolf_instance->mirrorLine(now, out, cap, batt_mv) : 0;
 }
 
-WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL) {}
+WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL) {
+#if PET_MYST
+  _scene_sp = 0;
+#endif
+}
 
 WolfModule::~WolfModule() {
   delete _scene;
@@ -109,7 +113,8 @@ void WolfModule::begin(UITask* ui) {
   _game = new WolfGame(_host);
   _game->begin(millis());
 #if PET_MYST
-  _scene = makePetScene(g_mystery_sp, _game);
+  _scene_sp = WolfGame::speciesOf(_game->pack[_game->current < _game->count ? _game->current : 0]);
+  _scene = makePetScene(_scene_sp, _game);
 #else
   _scene = new WolfScene(_game);
 #endif
@@ -128,7 +133,20 @@ void WolfModule::onControl(const uint8_t* payload, int len) {
   if (_game) _game->onPacket(payload, len, millis());
 }
 
+void WolfModule::syncScene() {
+#if PET_MYST
+  if (!_game || !_game->count) return;
+  uint8_t sp = WolfGame::speciesOf(_game->pack[_game->current < _game->count ? _game->current : 0]);
+  if (_scene && sp != _scene_sp) {
+    delete _scene;
+    _scene = makePetScene(sp, _game);
+    _scene_sp = sp;
+  }
+#endif
+}
+
 int WolfModule::render(DisplayDriver& d, uint16_t batt_mv) {
+  syncScene();
   return _scene ? _scene->render(d, millis(), batt_mv) : 1000;
 }
 
@@ -144,13 +162,14 @@ void WolfModule::save() {
 
 size_t WolfModule::mirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
   if (!_scene || !_game || !_game->count) return 0;
+  syncScene();
   if (!_mirror) _mirror = new MirrorState();
   MirrorState* m = (MirrorState*)_mirror;
   m->disp.startFrame();
   _scene->render(m->disp, now, batt_mv);
   const Wolf& w = _game->pack[_game->current];
 #if PET_MYST
-  const char* nm = WolfGame::isEgg(w) ? "egg" : petNameOf(g_mystery_sp);
+  const char* nm = WolfGame::isEgg(w) ? "egg" : petNameOf(WolfGame::speciesOf(w));
 #else
   const char* nm = PET_NAME;
 #endif

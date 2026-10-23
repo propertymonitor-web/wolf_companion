@@ -15,6 +15,7 @@ extern PetSceneBase* make_pet_dragon(WolfGame*);
 extern PetSceneBase* make_pet_kitsune(WolfGame*);
 extern PetSceneBase* make_pet_griffin(WolfGame*);
 extern PetSceneBase* make_pet_phoenix(WolfGame*);
+extern PetSceneBase* make_pet_horse(WolfGame*);
 // the drawing buffers every quadruped scene shares (sizes must match MAX_CW / MAX_CH in WolfScene.cpp)
 uint8_t g_pet_reg[72 * 60];
 uint8_t g_pet_lit[72 * 60];
@@ -35,6 +36,7 @@ PetSceneBase* makePetScene(uint8_t sp, WolfGame* g) {
     case 11: return make_pet_kitsune(g);
     case 12: return make_pet_griffin(g);
     case 13: return make_pet_phoenix(g);
+    case 14: return make_pet_horse(g);
     default: return make_pet_wolf(g);
   }
 }

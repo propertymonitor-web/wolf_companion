@@ -13,6 +13,7 @@
 #define WOLF_ADULT_MONTHS        24        // adult from 24 months (about 3.4 days powered on)
 #define WOLF_GESTATION_MONTHS    2         // ~63 days -> about 7 hours
 #define WOLF_COOLDOWN_MONTHS     12        // mother can't mate again for 12 wolf-months (~4 h)
+#define WOLF_HYBRID_PCT          20        // (secret) of those matings between two different kinds that CAN have young
 #define WOLF_MATE_CHANCE_PCT     60        // chance of mating once BOTH wolves have given consent
 
 // "Digital consent": every wolf rolls its own number of visits it needs from a given wolf before
@@ -44,18 +45,25 @@
 //   0xA1 BRED    "we mated" notice to the other radio (extends the visit)
 //   0xA2 ACK     host accepts the visitor and says which wolf greets it
 //   0xA3 PING    keep-alive while a visit is going on
+// every pet is known to every other pet: (type, version) identifies the species of whoever is talking
+#define WOLF_SPECIES_COUNT 15
+uint8_t petPktType(uint8_t sp);
+uint8_t petPktVer(uint8_t sp);
+uint8_t petHiddenFrom(uint8_t sp);
+uint8_t petHiddenTo(uint8_t sp);
+const char* petNameOf(uint8_t sp);
+uint8_t petSpeciesFromPkt(uint8_t type, uint8_t ver);   // 0xFF = not one of ours
 #if PET_MYST
-  // mystery egg: the packet family follows the pet inside, so a hatched fox still visits ordinary fox radios
+  // mystery egg: the packet family follows the pet inside (and each pet of a mixed family), so a hatched fox
+  // still visits ordinary fox radios
   extern uint8_t g_mystery_sp;                       // species number (= PET_ID of that pet), chosen from the radio's identity
-  uint8_t petPktType(uint8_t sp);
-  uint8_t petPktVer(uint8_t sp);
-  uint8_t petHiddenFrom(uint8_t sp);
-  uint8_t petHiddenTo(uint8_t sp);
-  const char* petNameOf(uint8_t sp);
   uint8_t petPickSpecies(uint32_t identity);
-  #define WOLF_PKT_TYPE            petPktType(g_mystery_sp)
-  #define WOLF_PKT_VERSION         petPktVer(g_mystery_sp)
+  uint8_t petHybrid(uint8_t a, uint8_t b);           // 0xFF = these two can never have young together
+  #define WOLF_MY_SPECIES          g_mystery_sp
+  #define WOLF_PKT_TYPE            petPktType(_pkt_sp)
+  #define WOLF_PKT_VERSION         petPktVer(_pkt_sp)
 #else
+  #define WOLF_MY_SPECIES          PET_ID
   #define WOLF_PKT_TYPE            PET_PKT_TYPE   // high nibble; one family per kind of pet (see PetSpecies.h)
   #define WOLF_PKT_VERSION         PET_PKT_VER
 #endif
@@ -91,6 +99,8 @@ struct Wolf {
   uint32_t dam;
   uint16_t pups_born;
   uint16_t pups_sired;
+  uint8_t  kind;            // species + 1 (0 = the species of this firmware); only the mystery build mixes species
+  uint8_t  child_kind;      // species + 1 of the young being carried (0 = the mother's own)
 };
 
 // Who has this device's wolves met?  (my wolf, their wolf) -> number of visits.
@@ -113,6 +123,7 @@ struct WolfVisitor {        // a wolf from another radio that is on OUR screen
   uint32_t genome;
   uint8_t  sex;
   uint16_t months;
+  uint8_t  species;         // what kind of pet it is (PET_ID numbering)
   uint8_t  owner[4];
   uint32_t until_ms, last_heard_ms, next_ping_ms;
   int8_t   enter_dir;       // +1 = walks in from the left edge, -1 = from the right edge
@@ -178,10 +189,13 @@ public:
   static uint8_t  stageFromMonths(uint32_t months);
   static bool     isAdult(const Wolf& w) { return ageMonths(w) >= WOLF_ADULT_MONTHS; }
 #if PET_MYST
-  static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return isEgg(w) || (m >= petHiddenFrom(g_mystery_sp) && m < petHiddenTo(g_mystery_sp)); }
+  static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); uint8_t sp = speciesOf(w); return isEgg(w) || (m >= petHiddenFrom(sp) && m < petHiddenTo(sp)); }
 #else
   static bool     hidden(const Wolf& w) { uint32_t m = ageMonths(w); return isEgg(w) || (m >= PET_HIDDEN_FROM && m < PET_HIDDEN_TO); }   // an egg or a chrysalis stays put
 #endif
+  static uint8_t  speciesOf(const Wolf& w) { return w.kind ? (uint8_t)(w.kind - 1) : (uint8_t)WOLF_MY_SPECIES; }
+  static bool     canPair(uint8_t a, uint8_t b);
+  int             youngKind(uint8_t mine, uint8_t theirs);
   static bool     related(uint32_t g1, uint32_t s1, uint32_t d1, uint32_t g2, uint32_t s2, uint32_t d2);
   uint32_t mixGenome(uint32_t mother, uint32_t father);
   void     cycleWolf();
@@ -211,6 +225,7 @@ private:
   struct Outbox { bool used; uint32_t due_ms; uint8_t pkt[40]; int len; } _out[4];
   void queue(const uint8_t* pkt, int len, uint32_t due_ms);
   bool _dirty;
+  uint8_t _pkt_sp, _rx_sp;      // species used for the packet being built / species of the packet being handled
 
   uint32_t rnd(uint32_t lo, uint32_t hi);          // inclusive
   uint8_t  rollNeed() { return (uint8_t)rnd(WOLF_CONSENT_MIN, WOLF_CONSENT_MAX); }
@@ -230,5 +245,5 @@ private:
   void handleBred(const uint8_t* p, int len, uint32_t now);
   void handlePing(const uint8_t* p, int len, uint32_t now);
   void sendBred(const uint8_t* target, uint32_t father, uint32_t mother);
-  void makePregnant(Wolf& mother, uint32_t father_genome);
+  void makePregnant(Wolf& mother, uint32_t father_genome, uint8_t child_kind);
 };

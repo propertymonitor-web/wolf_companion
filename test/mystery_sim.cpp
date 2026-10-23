@@ -56,6 +56,20 @@ int main(int argc, char** argv) {
     printf("  %-10s ok (egg %.1f h)\n", petNameOf(sp), eggs / 3600.0);
     delete sc;
   }
+  printf("== a hybrid-born horse-type scene and a species switch ==\n");
+  {
+    MockHost h(4242, tailFor(1), 7); WolfGame g(&h); g.begin(0);
+    MockDisplay d; uint32_t now = 1000;
+    for (uint8_t sp = 0; sp < WOLF_SPECIES_COUNT; sp++) {
+      g.pack[0].kind = (uint8_t)(sp + 1);
+      g.pack[0].age_secs = WolfGame::eggSecs(g.pack[0].genome) + 30u * WOLF_SECS_PER_MONTH;
+      PetSceneBase* sc = makePetScene(WolfGame::speciesOf(g.pack[0]), &g);
+      long ink = 0;
+      for (int i = 0; i < 300; i++, now += 110) { d.startFrame(0); sc->render(d, now, 3900); for (int q = 0; q < 128 * 64; q++) ink += d.px[q]; }
+      CHECK(ink > 300 * 40, "%s scene draws something when it is a pet of a mixed family", petNameOf(sp));
+      delete sc;
+    }
+  }
   printf(fails ? "SOME CHECKS FAILED\n" : "all checks passed\n");
   return fails ? 1 : 0;
 }

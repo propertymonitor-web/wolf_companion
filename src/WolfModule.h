@@ -28,6 +28,8 @@ private:
   WolfGame*  _game;
 #if PET_MYST
   PetSceneBase* _scene;
+  uint8_t       _scene_sp;          // which pet's pictures _scene draws (a mixed family has several)
+  void          syncScene();
 #else
   WolfScene* _scene;
 #endif

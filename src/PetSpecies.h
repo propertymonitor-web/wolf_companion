@@ -204,6 +204,26 @@
     { 3, 2, 4, 1, 4, 2, 2, 3, 2, 3, 2, 2, 4, 0, 0, 0, 0, 0, 2 }, \
     { 3, 2, 4, 2, 3, 2, 3, 3, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0, 3 }, \
     { 3, 2, 3, 2, 3, 3, 4, 3, 3, 1, 3, 2, 2, 0, 0, 0, 0, 0, 3 } }
+#elif defined(PET_HORSE)
+  #define PET_ID            14
+  #define PET_NAME          "horse"
+  #define PET_PKT_TYPE      0xF0
+  #undef  PET_PKT_VER
+  #define PET_PKT_VER       11
+  #undef  PET_TREAT
+  #define PET_TREAT         1
+  #define PET_STATE_FILE    "/pet_horse"
+  #define PET_ART           "WolfArt_horse.h"
+  #define PET_BARK_TEXT     "NEIGH!"
+  #define PET_CALL_PUP      "nicker~"
+  #define PET_CALL_ADULT    "NEEIIGH!"
+  #define PET_CALL_MOON     0
+  #define PET_PREY          0
+  #define PET_FLYER         0
+  #define PET_WEIGHTS { \
+    { 3, 2, 3, 1, 4, 2, 2, 3, 2, 3, 2, 2, 5, 0, 0, 0, 0, 0, 0 }, \
+    { 3, 2, 3, 2, 3, 2, 3, 3, 2, 2, 2, 2, 5, 0, 0, 0, 0, 0, 0 }, \
+    { 3, 2, 2, 2, 3, 3, 4, 3, 3, 1, 3, 2, 4, 0, 0, 0, 0, 0, 0 } }
 #elif defined(PET_DRAGON)
   #define PET_ID            10
   #define PET_NAME          "dragon"

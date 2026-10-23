@@ -14,7 +14,7 @@ on:
         description: "Which pet"
         type: choice
         default: wolf
-        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig, donkey, unicorn, dragon, kitsune, griffin, phoenix, mystery]
+        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig, donkey, unicorn, dragon, kitsune, griffin, phoenix, horse, mystery]
       env:
         description: "PlatformIO environment (the radio). Default is the Heltec V4"
         type: string
@@ -74,12 +74,16 @@ jobs:
           if [ "$SP" = MYSTERY ]; then
             g++ -std=c++17 -I src -I mc/src -I test -DPET_MYSTERY=1 test/mystery_sim.cpp src/WolfCore.cpp src/Mystery[A-Z]*.cpp -o mystery_sim
             ./mystery_sim | tail -3
+            g++ -std=c++17 -I src -I mc/src -I test -DPET_MYSTERY=1 test/cross_sim.cpp src/WolfCore.cpp -o cross_sim
+            ./cross_sim | grep -v "\[alert\]" | tail -8
           else
             g++ -std=c++17 -I src -I mc/src -I test -DPET_$SP=1 test/host_sim.cpp src/WolfCore.cpp src/WolfScene.cpp src/WolfInsect.cpp -o host_sim
             ./host_sim logic | grep -v "\[alert\]"
             ./host_sim mix | grep -E "STUCK|stage"
             ./host_sim egg | grep -v "\[alert\]"
             ./host_sim mirror mirror.txt
+            g++ -std=c++17 -I src -I mc/src -I test -DPET_$SP=1 test/cross_sim.cpp src/WolfCore.cpp -o cross_sim
+            ./cross_sim | grep -v "\[alert\]" | tail -8
           fi
 
       - name: Apply ORION, then the wolf
