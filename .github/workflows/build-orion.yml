@@ -11,10 +11,10 @@ on:
         default: metric
         options: [metric, mph]
       species:
-        description: "Which pet"
+        description: "Which pet (mesh = no pet + mesh analyzer; mysterymesh = mystery egg + mesh analyzer)"
         type: choice
         default: wolf
-        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig, donkey, unicorn, dragon, kitsune, griffin, phoenix, horse, mystery]
+        options: [wolf, fox, cat, bear, butterfly, gator, croc, pig, donkey, unicorn, dragon, kitsune, griffin, phoenix, horse, mystery, mesh, mysterymesh]
       env:
         description: "PlatformIO environment (the radio). Default is the Heltec V4"
         type: string
@@ -71,7 +71,11 @@ jobs:
         run: |
           set -o pipefail
           SP=$(echo "${{ inputs.species }}" | tr a-z A-Z)
-          if [ "$SP" = MYSTERY ]; then
+          g++ -std=c++17 -I src -I mc/src -I test test/mesh_sim.cpp -o mesh_sim && ./mesh_sim | tail -2
+          [ "$SP" = MYSTERYMESH ] && SP=MYSTERY
+          if [ "$SP" = MESH ]; then
+            echo "no pet in this build"
+          elif [ "$SP" = MYSTERY ]; then
             g++ -std=c++17 -I src -I mc/src -I test -DPET_MYSTERY=1 test/mystery_sim.cpp src/WolfCore.cpp src/Mystery[A-Z]*.cpp -o mystery_sim
             ./mystery_sim | tail -3
             g++ -std=c++17 -I src -I mc/src -I test -DPET_MYSTERY=1 test/cross_sim.cpp src/WolfCore.cpp -o cross_sim
@@ -90,8 +94,14 @@ jobs:
 
       - name: Apply ORION, then the wolf
         run: |
+          S="${{ inputs.species }}"
           python3 orion/tools/apply_nova.py --meshcore mc
-          python3 tools/apply_orion_wolf.py --meshcore mc $([ "${{ inputs.species }}" = mystery ] && echo --mystery)
+          case "$S" in
+            mesh) ;;
+            mystery|mysterymesh) python3 tools/apply_orion_wolf.py --meshcore mc --mystery ;;
+            *) python3 tools/apply_orion_wolf.py --meshcore mc ;;
+          esac
+          case "$S" in mesh|mysterymesh) python3 tools/apply_orion_mesh.py --meshcore mc ;; esac
 
       - name: Build firmware
         env:
@@ -100,7 +110,10 @@ jobs:
         run: |
           set -o pipefail
           SP=$(echo "$SPECIES" | tr a-z A-Z)
-          export PLATFORMIO_BUILD_FLAGS="-DNOVA_ORION=1 -DPET_$SP=1 $([ "$UNITS" = mph ] && echo -DNOVA_MPH=1)"
+          PETFLAG="-DPET_$SP=1"
+          [ "$SP" = MYSTERYMESH ] && PETFLAG="-DPET_MYSTERY=1"
+          [ "$SP" = MESH ] && PETFLAG=""
+          export PLATFORMIO_BUILD_FLAGS="-DNOVA_ORION=1 $PETFLAG $([ "$UNITS" = mph ] && echo -DNOVA_MPH=1)"
           echo "flags: $PLATFORMIO_BUILD_FLAGS"
           pip install platformio
           cd mc
@@ -155,4 +168,4 @@ jobs:
             if [ -f out/firmware.hex ]; then cp out/firmware.hex "$P.hex"; FILES="$FILES $P.hex"; fi
           fi
           gh release create "$TAG" $FILES --title "ORION + $SPECIES ($BOARD, $UNITS)" \
-            --notes "LODESTAR ORION with the $SPECIES pet. Radio: $BOARD."
+            --notes "LODESTAR ORION, $SPECIES build. Radio: $BOARD."
