@@ -28,6 +28,14 @@ on:
         type: choice
         default: esp32
         options: [esp32, nrf52]
+      mesh:
+        description: "Add the Mesh Analyzer to any pet build"
+        type: boolean
+        default: false
+      instant:
+        description: "Private build: the pet is born at once (no egg)"
+        type: boolean
+        default: false
       meshcore_ref:
         description: "MeshCore commit to build on"
         type: string
@@ -101,7 +109,7 @@ jobs:
             mystery|mysterymesh) python3 tools/apply_orion_wolf.py --meshcore mc --mystery ;;
             *) python3 tools/apply_orion_wolf.py --meshcore mc ;;
           esac
-          case "$S" in mesh|mysterymesh) python3 tools/apply_orion_mesh.py --meshcore mc ;; esac
+          if [ "$S" = mesh ] || [ "$S" = mysterymesh ] || [ "${{ inputs.mesh }}" = true ]; then python3 tools/apply_orion_mesh.py --meshcore mc; fi
 
       - name: Build firmware
         env:
@@ -113,6 +121,7 @@ jobs:
           PETFLAG="-DPET_$SP=1"
           [ "$SP" = MYSTERYMESH ] && PETFLAG="-DPET_MYSTERY=1"
           [ "$SP" = MESH ] && PETFLAG=""
+          [ "${{ inputs.instant }}" = true ] && PETFLAG="$PETFLAG -DPET_INSTANT=1"
           export PLATFORMIO_BUILD_FLAGS="-DNOVA_ORION=1 $PETFLAG $([ "$UNITS" = mph ] && echo -DNOVA_MPH=1)"
           echo "flags: $PLATFORMIO_BUILD_FLAGS"
           pip install platformio

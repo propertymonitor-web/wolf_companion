@@ -180,7 +180,9 @@ public:
   static void     traitsOf(uint32_t genome, WolfTraits& t);
   // eggs: some pets (and every mystery pet) start as an egg that hatches after 24..48 hours powered on
   static uint32_t eggSecs(uint32_t genome) {
-#if PET_MYST || PET_EGG
+#if defined(PET_INSTANT) && PET_INSTANT
+    (void)genome; return 0;                      // private build: born at once, no egg
+#elif PET_MYST || PET_EGG
     uint32_t x = genome ^ 0x5EEDC0DEu; x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
     return (24u + x % 25u) * 3600UL;
 #else
