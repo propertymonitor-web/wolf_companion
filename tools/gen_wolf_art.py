@@ -81,6 +81,23 @@ def rot(pt, pivot, ang):
     return (pivot[0] + x * c - y * s, pivot[1] + x * s + y * c)
 
 
+
+def _pl(x):
+    """one polygon or a list of polygons / cut markers -> list"""
+    return x if (x and isinstance(x[0], (list, tuple)) and (isinstance(x[0], list) or (x[0] and isinstance(x[0][0], str)))) else [x]
+
+
+def _rotl(x, pivot, ang):
+    """rotate a polygon or a list of polygons / cut markers about `pivot`"""
+    out = []
+    for q in _pl(x):
+        if isinstance(q, tuple) and q and isinstance(q[0], str):
+            out.append((q[0], [rot(p, pivot, ang) for p in q[1]]) + tuple(q[2:]))
+        else:
+            out.append([rot(p, pivot, ang) for p in q])
+    return out
+
+
 class Stage:
     def __init__(self, name, k, hk, lk):
         self.name, self.k, self.hk, self.lk = name, k, hk, lk
@@ -104,6 +121,14 @@ class Stage:
         im = Image.new("L", (self.cw * SS, self.ch * SS), 0)
         d = ImageDraw.Draw(im)
         for poly in polys:
+            if isinstance(poly, tuple) and poly and poly[0] == "cut":          # carve a hole (interior detail)
+                pts = [self.tx(p, head=head, leg=leg) for p in poly[1]]
+                d.polygon([(x * SS, y * SS) for x, y in pts], fill=0)
+                continue
+            if isinstance(poly, tuple) and poly and poly[0] == "cutline":      # carve a thin line
+                pts = [self.tx(p, head=head, leg=leg) for p in poly[1]]
+                d.line([(x * SS, y * SS) for x, y in pts], fill=0, width=max(1, int(round(poly[2] * self.k * SS))))
+                continue
             pts = [self.tx(p, head=head, leg=leg) for p in poly]
             d.polygon([(x * SS, y * SS) for x, y in pts], fill=255)
         return self.finish(im)
@@ -205,19 +230,19 @@ def main(out_path):
             out.append(c_array(sym, data))
             parts[key] = (sym, x, y, w, h)
 
-        add("body", st.render([BODY]))
+        add("body", st.render(BODY if isinstance(BODY[0], list) else [BODY]))
         for f in range(5):
             add("legs%d" % f, st.render(legs_for_frame(f, lk), leg=True))
 
         # head poses
         ang_down = math.radians(38)
-        down_poly = [rot(p, NECK, ang_down) for p in HEAD_SIDE]
-        add("head0", st.render([HEAD_SIDE], head=True))
-        add("head1", st.render([down_poly], head=True))
+        down_poly = _rotl(HEAD_SIDE, NECK, ang_down)
+        add("head0", st.render(_pl(HEAD_SIDE), head=True))
+        add("head1", st.render(down_poly, head=True))
         add("head2", st.render([HEAD_FRONT], head=True))
         add("head3", st.render([HEAD_FRONT], head=True))
         ang_up = math.radians(-32)
-        add("head4", st.render([[rot(p, NECK, ang_up) for p in HEAD_SIDE]], head=True))
+        add("head4", st.render(_rotl(HEAD_SIDE, NECK, ang_up), head=True))
 
         keys = []
         # side
@@ -245,11 +270,11 @@ def main(out_path):
 
         # ears
         for style in range(3):
-            add("ear%d_0" % style, st.render([EAR_SIDE[style]], head=True))
-            add("ear%d_1" % style, st.render([[rot(p, NECK, ang_down) for p in EAR_SIDE[style]]], head=True))
+            add("ear%d_0" % style, st.render(_pl(EAR_SIDE[style]), head=True))
+            add("ear%d_1" % style, st.render(_rotl(EAR_SIDE[style], NECK, ang_down), head=True))
             add("ear%d_2" % style, st.render(EAR_FRONT[style], head=True))
             parts["ear%d_3" % style] = parts["ear%d_2" % style]
-            add("ear%d_4" % style, st.render([[rot(p, NECK, ang_up) for p in EAR_SIDE[style]]], head=True))
+            add("ear%d_4" % style, st.render(_rotl(EAR_SIDE[style], NECK, ang_up), head=True))
 
         for t in range(3):
             for fr in range(2):
