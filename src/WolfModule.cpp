@@ -99,6 +99,41 @@ size_t wolfMirrorLine(uint32_t now, char* out, size_t cap, uint16_t batt_mv) {
   return g_wolf_instance ? g_wolf_instance->mirrorLine(now, out, cap, batt_mv) : 0;
 }
 
+#if TACTICAL
+#define TAC_MODE_FILE "/orion_tac"
+// filled in by MyMesh.cpp (see apply_orion_tactical.py): the contacts heard, from the wardriving log
+int tacCollect(tac::Contact* out, int max, tac::Self& me, uint32_t now);
+bool tacSetMode(int mode, char* reply, int reply_len) {      // mode: 1 radar, 0 pet, -1 just report
+  if (!g_wolf_instance) { snprintf(reply, reply_len, "Err - no pet module"); return false; }
+  bool ch = false;
+  if (mode >= 0) ch = g_wolf_instance->setTactical(mode == 1);
+  snprintf(reply, reply_len, "tactical mode %s%s", g_wolf_instance->tacticalOn() ? "ON" : "OFF", ch ? " (changed)" : "");
+  return ch;
+}
+void tacPacket(uint8_t type, const uint8_t* payload, int len, uint32_t now) {
+  if (g_wolf_instance) g_wolf_instance->onMeshPacket(type, payload, len, now);
+}
+void WolfModule::loadTactical() {
+  FILESYSTEM* fs = store.getPrimaryFS();
+  if (!fs || !fs->exists(TAC_MODE_FILE)) return;
+  File f = store.openRead(TAC_MODE_FILE);
+  if (!f) return;
+  uint8_t b = 0;
+  if (f.read(&b, 1) == 1) _tac.on = (b == 1);
+  f.close();
+}
+bool WolfModule::setTactical(bool on, bool save_it) {
+  if (on == _tac.on) return false;
+  _tac.on = on;
+  if (save_it) {
+    FILESYSTEM* fs = store.getPrimaryFS();
+    if (fs) { File f = wolfOpenWrite(fs, TAC_MODE_FILE); if (f) { uint8_t b = on ? 1 : 0; f.write(&b, 1); f.close(); } }
+  }
+  if (_host) _host->ui->gotoWolfScreen();                       // show the change at once
+  return true;
+}
+#endif
+
 WolfModule::WolfModule() : _host(NULL), _game(NULL), _scene(NULL), _mirror(NULL) {
 #if PET_MYST
   _scene_sp = 0; _scene_head = 0xFF;
@@ -125,6 +160,9 @@ void WolfModule::begin(UITask* ui) {
   _scene = new WolfScene(_game);
 #endif
   g_wolf_instance = this;
+#if TACTICAL
+  loadTactical();
+#endif
 }
 
 void WolfModule::loop() {
@@ -155,11 +193,21 @@ void WolfModule::syncScene() {
 }
 
 int WolfModule::render(DisplayDriver& d, uint16_t batt_mv) {
+#if TACTICAL
+  if (_tac.on) {                       // tactical mode: the radar takes the pet's place on the screen (the pet goes on ageing, see loop())
+    static tac::Contact cs[tac::MAX_CONTACTS]; tac::Self me = { false, 0, 0 };
+    int n = tacCollect(cs, tac::MAX_CONTACTS, me, millis());
+    return _tac.render(d, millis(), cs, n, me);
+  }
+#endif
   syncScene();
   return _scene ? _scene->render(d, millis(), batt_mv) : 1000;
 }
 
 void WolfModule::nextWolf(char* desc, int desc_len) {
+#if TACTICAL
+  if (_tac.on) { setTactical(false); snprintf(desc, desc_len, "PET MODE"); return; }   // long press on the radar: back to the pet
+#endif
   if (!_game) return;
   _game->cycleWolf();
   _game->describe(_game->pack[_game->current], desc, desc_len);

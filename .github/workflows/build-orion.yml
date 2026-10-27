@@ -36,6 +36,10 @@ on:
         description: "Private build: the pet is born at once (no egg)"
         type: boolean
         default: false
+      tactical:
+        description: "TACTICAL: sweeping radar on the OLED instead of the pet (needs a pet species + Mesh Analyzer; the pet keeps ageing)"
+        type: boolean
+        default: false
       meshcore_ref:
         description: "MeshCore commit to build on"
         type: string
@@ -81,6 +85,7 @@ jobs:
           SP=$(echo "${{ inputs.species }}" | tr a-z A-Z)
           g++ -std=c++17 -I src -I mc/src -I test test/mesh_sim.cpp -o mesh_sim && ./mesh_sim | tail -2
           [ "$SP" = MYSTERYMESH ] && SP=MYSTERY
+          g++ -std=c++17 -I src -I mc/src -I test test/tac_sim.cpp -o tac_sim && ./tac_sim | tail -2
           if [ "$SP" = MESH ]; then
             echo "no pet in this build"
           elif [ "$SP" = MYSTERY ]; then
@@ -103,13 +108,17 @@ jobs:
       - name: Apply ORION, then the wolf
         run: |
           S="${{ inputs.species }}"
+          if [ "${{ inputs.tactical }}" = true ] && [ "$S" = mesh ]; then echo "::error::tactical needs a pet species (the radar shares the pet screen); use mysterymesh or a pet"; exit 1; fi
           python3 orion/tools/apply_nova.py --meshcore mc
           case "$S" in
             mesh) ;;
             mystery|mysterymesh) python3 tools/apply_orion_wolf.py --meshcore mc --mystery ;;
             *) python3 tools/apply_orion_wolf.py --meshcore mc ;;
           esac
-          if [ "$S" = mesh ] || [ "$S" = mysterymesh ] || [ "${{ inputs.mesh }}" = true ]; then python3 tools/apply_orion_mesh.py --meshcore mc; fi
+          if [ "$S" = mesh ] || [ "$S" = mysterymesh ] || [ "${{ inputs.mesh }}" = true ] || [ "${{ inputs.tactical }}" = true ]; then python3 tools/apply_orion_mesh.py --meshcore mc; fi
+          if [ "${{ inputs.tactical }}" = true ]; then
+            python3 tools/apply_orion_tactical.py --meshcore mc
+          fi
 
       - name: Build firmware
         env:
@@ -122,7 +131,7 @@ jobs:
           [ "$SP" = MYSTERYMESH ] && PETFLAG="-DPET_MYSTERY=1"
           [ "$SP" = MESH ] && PETFLAG=""
           [ "${{ inputs.instant }}" = true ] && PETFLAG="$PETFLAG -DPET_INSTANT=1"
-          export PLATFORMIO_BUILD_FLAGS="-DNOVA_ORION=1 $PETFLAG $([ "$UNITS" = mph ] && echo -DNOVA_MPH=1)"
+          export PLATFORMIO_BUILD_FLAGS="-DNOVA_ORION=1 $PETFLAG $([ "$UNITS" = mph ] && echo -DNOVA_MPH=1) $([ "${{ inputs.tactical }}" = true ] && echo -DTACTICAL=1)"
           echo "flags: $PLATFORMIO_BUILD_FLAGS"
           pip install platformio
           cd mc
@@ -154,7 +163,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: orion-${{ inputs.species }}-${{ inputs.board }}-${{ inputs.units }}
+          name: orion-${{ inputs.species }}${{ inputs.tactical && '-tactical' || '' }}-${{ inputs.board }}-${{ inputs.units }}
           path: out/
 
       - name: Publish release (private repo)
@@ -168,6 +177,7 @@ jobs:
           KIND: ${{ inputs.kind }}
         run: |
           P="orion-$SPECIES-$BOARD-$UNITS"
+          TACT="${{ inputs.tactical }}"; [ "$TACT" = true ] && P="orion-$SPECIES-tactical-$BOARD-$UNITS"
           if [ "$KIND" = esp32 ]; then
             cp out/firmware-merged.bin "$P-merged.bin"; cp out/firmware.bin "$P-update.bin"; FILES="$P-merged.bin $P-update.bin"
           else

@@ -15,5 +15,7 @@ for f in "" "-DPET_FOX=1" "-DPET_BUTTERFLY=1" "-DPET_DRAGON=1" "-DPET_HORSE=1" "
   g++ -std=c++17 -g -fsanitize=address,undefined -I src -I $MC -I test $f test/cross_sim.cpp src/WolfCore.cpp -o $OUT/cross_sim 2>&1 | grep -E "error"
   echo "CROSS ${f:-wolf}: $($OUT/cross_sim 2>&1 | tail -1)"
 done
+g++ -std=c++17 -g -I src -I $MC -I test test/tac_sim.cpp -o $OUT/tac_sim 2>&1 | grep -E "error"
+echo "TAC: $($OUT/tac_sim 2>&1 | tail -1)"
 g++ -std=c++17 -g -fsanitize=address,undefined -I src -I $MC -I test test/hud_sim.cpp src/WolfCore.cpp -o $OUT/hud_sim 2>&1 | grep -E "error"
 echo "HUD: $($OUT/hud_sim 2>&1 | tail -1)"
