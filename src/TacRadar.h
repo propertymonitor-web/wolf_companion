@@ -12,7 +12,7 @@ namespace tac {
 
 static const uint32_t PERIOD_MS = 6500;        // one turn of the sweep
 static const uint32_t WINDOW_MS = 900000;      // a contact not heard for 15 minutes leaves the radar
-static const int MAX_CONTACTS = 48;
+static const int TAC_MAXC = 48;
 
 struct Contact {
   uint8_t id;          // stable slot number (so the radar can remember when the sweep last lit it)
@@ -27,8 +27,8 @@ struct Self { bool fix; int32_t lat_e6, lon_e6; };
 
 struct Radar {
   bool     on = false;                 // TACTICAL mode (persisted by the module)
-  uint32_t lit[MAX_CONTACTS];          // when the sweep last passed each contact (0 = not yet)
-  uint8_t  litk[MAX_CONTACTS];
+  uint32_t lit[TAC_MAXC];          // when the sweep last passed each contact (0 = not yet)
+  uint8_t  litk[TAC_MAXC];
   float    prev = 0;
   float    range_m = 1000;
   uint8_t  ping_src[16]; uint32_t ping_ms[16]; uint8_t ping_n = 0;   // recent Mesh Analyzer packets (sender byte, time)
@@ -86,12 +86,12 @@ struct Radar {
 
     // which contacts count, and where they go
     float far_m = 0; int rep = 0, cmp = 0, room = 0;
-    static float ang[MAX_CONTACTS], frac[MAX_CONTACTS], dist[MAX_CONTACTS]; static bool ok[MAX_CONTACTS];
+    static float ang[TAC_MAXC], frac[TAC_MAXC], dist[TAC_MAXC]; static bool ok[TAC_MAXC];
     float coslat = me.fix ? cosf((float)me.lat_e6 * 1e-6f * 0.0174533f) : 1.0f;
-    for (int i = 0; i < n && i < MAX_CONTACTS; i++) {
+    for (int i = 0; i < n && i < TAC_MAXC; i++) {
       uint32_t age = c[i].age_ms;
       for (int k = 0; k < 16; k++) if (ping_ms[k] && ping_src[k] == c[i].k0 && (uint32_t)(now - ping_ms[k]) < age) age = now - ping_ms[k];
-      ok[i] = age <= WINDOW_MS && c[i].type >= 1 && c[i].id < MAX_CONTACTS;
+      ok[i] = age <= WINDOW_MS && c[i].type >= 1 && c[i].id < TAC_MAXC;
       if (!ok[i]) continue;
       if (c[i].type == 2) rep++; else if (c[i].type == 1) cmp++; else room++;
       if (me.fix && c[i].has_pos) {
@@ -105,7 +105,7 @@ struct Radar {
     static const float RINGS[] = { 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000 };
     float want = 1000; if (far_m > 0) { want = 500000; for (float r : RINGS) if (r >= far_m * 1.08f) { want = r; break; } }
     range_m += (want - range_m) * 0.1f;
-    for (int i = 0; i < n && i < MAX_CONTACTS; i++) {
+    for (int i = 0; i < n && i < TAC_MAXC; i++) {
       if (!ok[i]) continue;
       float fr = dist[i] >= 0 ? dist[i] / range_m : 0.9f - 0.75f * (c[i].snr < -20 ? 0 : c[i].snr > 15 ? 1 : (c[i].snr + 20) / 35.0f);
       frac[i] = fr > 0.95f ? 0.95f : fr;
@@ -120,8 +120,8 @@ struct Radar {
     }
 
     // contacts: lit when the sweep crosses them, then they fade until the next pass
-    for (int i = 0; i < n && i < MAX_CONTACTS; i++) {
-      if (!ok[i]) { if (c[i].id < MAX_CONTACTS) lit[c[i].id] = 0; continue; }           // no longer heard: gone
+    for (int i = 0; i < n && i < TAC_MAXC; i++) {
+      if (!ok[i]) { if (c[i].id < TAC_MAXC) lit[c[i].id] = 0; continue; }           // no longer heard: gone
       uint8_t id = c[i].id;
       if (litk[id] != c[i].k0) { litk[id] = c[i].k0; lit[id] = 0; }
       float a = ang[i];

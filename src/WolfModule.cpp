@@ -195,8 +195,8 @@ void WolfModule::syncScene() {
 int WolfModule::render(DisplayDriver& d, uint16_t batt_mv) {
 #if TACTICAL
   if (_tac.on) {                       // tactical mode: the radar takes the pet's place on the screen (the pet goes on ageing, see loop())
-    static tac::Contact cs[tac::MAX_CONTACTS]; tac::Self me = { false, 0, 0 };
-    int n = tacCollect(cs, tac::MAX_CONTACTS, me, millis());
+    static tac::Contact cs[tac::TAC_MAXC]; tac::Self me = { false, 0, 0 };
+    int n = tacCollect(cs, tac::TAC_MAXC, me, millis());
     return _tac.render(d, millis(), cs, n, me);
   }
 #endif
