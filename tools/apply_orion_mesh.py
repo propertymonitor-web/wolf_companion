@@ -43,7 +43,7 @@ patch(os.path.join(cr, "MyMesh.cpp"), [
     ("state", "  static uint32_t nv_next_json = 0;\n",
      "  static uint32_t nv_next_json = 0;\n  static uint32_t nv_mesh_until = 0, nv_mesh_next = 0;   // the mesh analyzer stream, while a page asks for it\n"),
     ("command", "    if (strncmp(nv_line + 4, \" json\", 5) == 0)",
-     "    if (strncmp(nv_line + 4, \" mesh\", 5) == 0 && (nv_line[9] == 0 || nv_line[9] == ' ')) { nv_mesh_until = nv_now + 4000u; continue; }\n"
+     "    if (strncmp(nv_line + 4, \" mesh\", 5) == 0 && (nv_line[9] == 0 || nv_line[9] == ' ')) { nv_mesh_until = nv_now + 15000u; continue; }\n"
      "    if (strncmp(nv_line + 4, \" json\", 5) == 0)"),
     ("stream", "  static bool nv_was_on = false;\n",
      """  if ((int32_t)(nv_mesh_until - nv_now) > 0 && (int32_t)(nv_now - nv_mesh_next) >= 0) {   // twice a second, only when there is news
