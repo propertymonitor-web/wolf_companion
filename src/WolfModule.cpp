@@ -114,6 +114,9 @@ void tacPacket(uint8_t type, const uint8_t* payload, int len, uint32_t now) {
   if (g_wolf_instance) g_wolf_instance->onMeshPacket(type, payload, len, now);
 }
 void WolfModule::loadTactical() {
+#if OTR
+  return;
+#endif
   FILESYSTEM* fs = store.getPrimaryFS();
   if (!fs || !fs->exists(TAC_MODE_FILE)) return;
   File f = store.openRead(TAC_MODE_FILE);
@@ -123,6 +126,9 @@ void WolfModule::loadTactical() {
   f.close();
 }
 bool WolfModule::setTactical(bool on, bool save_it) {
+#if OTR
+  (void)on; (void)save_it; return false;                    // OTR is always tactical
+#endif
   if (on == _tac.on) return false;
   _tac.on = on;
   if (save_it) {
@@ -149,6 +155,12 @@ WolfModule::~WolfModule() {
 
 void WolfModule::begin(UITask* ui) {
   _host = new Host(ui);
+#if OTR
+  // OTR (Orion Tactical Radio): no pet and no tank. The radar is the only screen, so there is no game to create or age.
+  g_wolf_instance = this;
+  _tac.on = true;
+  return;
+#endif
   _game = new WolfGame(_host);
   _game->begin(millis());
 #if PET_MYST
@@ -205,6 +217,9 @@ int WolfModule::render(DisplayDriver& d, uint16_t batt_mv) {
 }
 
 void WolfModule::nextWolf(char* desc, int desc_len) {
+#if OTR
+  snprintf(desc, desc_len, "TACTICAL"); return;           // nothing to switch to
+#endif
 #if TACTICAL
   if (_tac.on) { setTactical(false); snprintf(desc, desc_len, "PET MODE"); return; }   // long press on the radar: back to the pet
 #endif
