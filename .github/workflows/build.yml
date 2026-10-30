@@ -45,7 +45,7 @@ jobs:
           ./host_sim mix | grep -E "STUCK|stage"
 
       - name: Add the wolf to MeshCore
-        run: python3 tools/apply_wolf.py --meshcore mc
+        run: python3 tools/apply_wolf.py --meshcore mc && python3 tools/persist_ble_pin.py --meshcore mc
 
       - name: Build firmware
         run: |
